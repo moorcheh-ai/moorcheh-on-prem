@@ -1,0 +1,8 @@
+Flask==2.3.3
+prometheus-client
+SQLAlchemy==1.4.45
+python-dotenv==1.0.0
+sanic
+ollama
+python-docx
+httpx

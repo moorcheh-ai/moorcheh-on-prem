@@ -1,0 +1,18 @@
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+# env/ commented since its requried for building elsewhere
+# *.env
+
+# Sanic logs and cache
+
+*.log
+*.pid
+*.sqlite
+.cache/
+sessions/

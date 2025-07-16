@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: server
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+      - ./promptrepo:/app/promptrepo
+    depends_on:
+      - ollama
+    environment:
+      - PYTHONUNBUFFERED=1
+    working_dir: /app
+    command: python -m app.server --docker
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # deploy:     for running on devices with gpu
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - capabilities: [gpu]
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        # Start the Ollama server in the background
+        ollama serve &
+        
+        # Wait until Ollama server is up and running
+        echo "Waiting for Ollama server to start..."
+        sleep 10  # Adjust as necessary to give enough time for the server to start
+
+        # Check if model is already available, otherwise pull it
+        if [ ! -f "/root/.ollama/models/phi4:latest" ]; then
+          echo "Pulling phi4:latest model..."
+          ollama pull phi4:latest
+        fi
+
+        # Keep the container running
+        tail -f /dev/null
+
+volumes:
+  ollama_data:
