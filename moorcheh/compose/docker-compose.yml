@@ -1,0 +1,29 @@
+services:
+  ollama:
+    image: ${OLLAMA_IMAGE:-ollama/ollama:latest}
+    container_name: moorcheh-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+  server:
+    image: ${MOORCHEH_SERVER_IMAGE:-moorcheh/server:latest}
+    container_name: moorcheh-onprem-server
+    depends_on:
+      - ollama
+    ports:
+      - "${SERVER_PORT:-8080}:8080"
+    environment:
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 8080
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-nomic-embed-text}
+      DATA_FILE: /app/data/moorcheh_data_store.json
+      NAMESPACE_REGISTRY_FILE: /app/data/namespace_registry.json
+    volumes:
+      - server_data:/app/data
+
+volumes:
+  ollama_data:
+  server_data:
