@@ -1,0 +1,20 @@
+{
+  "items": [
+    {
+      "id": "bulk-doc-1",
+      "text": "Bulk upload document one for moorcheh client test.",
+      "metadata": {
+        "team": "ai",
+        "source": "cli-test"
+      }
+    },
+    {
+      "id": "bulk-doc-2",
+      "text": "Bulk upload document two for moorcheh client test.",
+      "metadata": {
+        "team": "ai",
+        "source": "cli-test"
+      }
+    }
+  ]
+}

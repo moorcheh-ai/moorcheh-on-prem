@@ -1,18 +1,24 @@
+# Rust
+/target/
+**/target/
 
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
+# Python
+**/__pycache__/
+*.pyc
 
-# Virtual environment
-venv/
-# env/ commented since its requried for building elsewhere
-# *.env
+# Local env files
+.env
+.env.*
 
-# Sanic logs and cache
+# Generated data/artifacts
+benchmark_output/
 
-*.log
-*.pid
-*.sqlite
-.cache/
-sessions/
+# Local data folders
+**/data/
+
+# Build helpers
+/wheels/
+moorcheh-edge
+moorcheh-edge-client
+moorcheh.egg-info
+dist

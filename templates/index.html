@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Moorcheh Endpoint Tester</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f7f7f7; color: #222; }
+    .topbar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+    .btn { padding: 8px 12px; border: 1px solid #bbb; border-radius: 6px; cursor: pointer; background: #fff; }
+    .btn.primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 12px; }
+    .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 12px; }
+    .title { margin: 0 0 8px; font-size: 15px; }
+    .muted { color: #666; font-size: 12px; }
+    textarea { width: 100%; min-height: 120px; font-family: Consolas, monospace; font-size: 12px; margin-top: 8px; }
+    pre { background: #111; color: #f4f4f4; padding: 10px; border-radius: 6px; max-height: 220px; overflow: auto; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h2>Moorcheh Endpoint Tester</h2>
+  <div class="topbar">
+    <label>Target Port:</label>
+    <select id="portSelect">
+      <option value="8080">8080</option>
+      <option value="8081" selected>8081</option>
+    </select>
+    <span class="muted">Default from Flask env: {{ default_server_url }}</span>
+    <button class="btn primary" id="runAllBtn">Run All Tests</button>
+  </div>
+
+  <div class="grid" id="tests"></div>
+
+  <script>
+    const state = {
+      docsUploadJobId: null,
+      vectorsUploadJobId: null,
+      docsNamespaceDeleteJobId: null,
+      vectorNamespaceDeleteJobId: null,
+      createdDocId: "doc_html_001",
+      createdVecIds: ["vec_html_001", "vec_html_002", "vec_html_003", "vec_html_004", "vec_html_005"]
+    };
+
+    function baseUrl() {
+      return `http://localhost:${document.getElementById("portSelect").value}`;
+    }
+
+    function pretty(obj) {
+      return JSON.stringify(obj, null, 2);
+    }
+
+    async function apiCall(method, path, payload) {
+      const res = await fetch("/proxy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          method,
+          path,
+          payload,
+          port: document.getElementById("portSelect").value
+        })
+      });
+      let data = {};
+      try { data = await res.json(); } catch (_) {}
+      return data;
+    }
+
+    const tests = [
+      {
+        id: "t1",
+        name: "1) Health",
+        path: "GET /health",
+        payload: null,
+        run: async () => apiCall("GET", "/health")
+      },
+      {
+        id: "t2",
+        name: "2) Create Text Namespace",
+        path: "POST /namespaces",
+        payload: { namespace_name: "docs_html", type: "text" },
+        run: async (p) => apiCall("POST", "/namespaces", p)
+      },
+      {
+        id: "t3",
+        name: "3) Create Vector Namespace (5D)",
+        path: "POST /namespaces",
+        payload: { namespace_name: "products_vec_html", type: "vector", vector_dimension: 5 },
+        run: async (p) => apiCall("POST", "/namespaces", p)
+      },
+      {
+        id: "t4",
+        name: "4) List Namespaces",
+        path: "GET /namespaces",
+        payload: null,
+        run: async () => apiCall("GET", "/namespaces")
+      },
+      {
+        id: "t5",
+        name: "5) Upload Text Documents (Async)",
+        path: "POST /namespaces/docs_html/documents",
+        payload: {
+          documents: [
+            { id: "doc_html_001", text: "Moorcheh HTML test document", source: "html-runner" }
+          ]
+        },
+        run: async (p) => {
+          const out = await apiCall("POST", "/namespaces/docs_html/documents", p);
+          state.docsUploadJobId = out?.data?.job_id || null;
+          return out;
+        }
+      },
+      {
+        id: "t6",
+        name: "6) Upload Job Status",
+        path: "GET /namespaces/docs_html/upload-jobs/{job_id}",
+        payload: null,
+        run: async () => {
+          if (!state.docsUploadJobId) return { ok: false, status: 0, data: { message: "No upload job id yet." } };
+          return apiCall("GET", `/namespaces/docs_html/upload-jobs/${state.docsUploadJobId}`);
+        }
+      },
+      {
+        id: "t7",
+        name: "7) Upload Vectors (Async, 5D)",
+        path: "POST /namespaces/products_vec_html/vectors",
+        payload: {
+          vectors: [
+            { id: "vec_html_001", vector: [0.1, 0.2, 0.3, 0.4, 0.5], source: "html-runner", category: "demo" },
+            { id: "vec_html_002", vector: [0.2, 0.1, 0.4, 0.3, 0.5], source: "html-runner", category: "demo" },
+            { id: "vec_html_003", vector: [0.9, 0.8, 0.7, 0.6, 0.5], source: "html-runner", category: "demo" },
+            { id: "vec_html_004", vector: [0.3, 0.3, 0.3, 0.3, 0.3], source: "html-runner", category: "demo" },
+            { id: "vec_html_005", vector: [0.5, 0.4, 0.3, 0.2, 0.1], source: "html-runner", category: "demo" }
+          ]
+        },
+        run: async (p) => {
+          const out = await apiCall("POST", "/namespaces/products_vec_html/vectors", p);
+          state.vectorsUploadJobId = out?.data?.job_id || null;
+          return out;
+        }
+      },
+      {
+        id: "t8",
+        name: "8) Vector Upload Job Status",
+        path: "GET /namespaces/products_vec_html/upload-jobs/{job_id}",
+        payload: null,
+        run: async () => {
+          if (!state.vectorsUploadJobId) return { ok: false, status: 0, data: { message: "No vector upload job id yet." } };
+          return apiCall("GET", `/namespaces/products_vec_html/upload-jobs/${state.vectorsUploadJobId}`);
+        }
+      },
+      {
+        id: "t9",
+        name: "9) Items Get (Text)",
+        path: "POST /namespaces/docs_html/items/get",
+        payload: { ids: ["doc_html_001"] },
+        run: async (p) => apiCall("POST", "/namespaces/docs_html/items/get", p)
+      },
+      {
+        id: "t10",
+        name: "10) Items Get (Vector)",
+        path: "POST /namespaces/products_vec_html/items/get",
+        payload: { ids: ["vec_html_001", "vec_html_002", "vec_html_003", "vec_html_004", "vec_html_005"] },
+        run: async (p) => apiCall("POST", "/namespaces/products_vec_html/items/get", p)
+      },
+      {
+        id: "t11",
+        name: "11) Search Text",
+        path: "POST /search",
+        payload: { query: "Moorcheh HTML test document", namespaces: ["docs_html"], top_k: 5, kiosk_mode: false },
+        run: async (p) => apiCall("POST", "/search", p)
+      },
+      {
+        id: "t12",
+        name: "12) Search Vector (5D)",
+        path: "POST /search",
+        payload: { query: [0.1, 0.2, 0.3, 0.4, 0.5], namespaces: ["products_vec_html"], top_k: 5, kiosk_mode: false },
+        run: async (p) => apiCall("POST", "/search", p)
+      },
+      {
+        id: "t13",
+        name: "13) Items Delete (Text)",
+        path: "POST /namespaces/docs_html/items/delete",
+        payload: { ids: ["doc_html_001"] },
+        run: async (p) => apiCall("POST", "/namespaces/docs_html/items/delete", p)
+      },
+      {
+        id: "t14",
+        name: "14) Items Delete (Vector)",
+        path: "POST /namespaces/products_vec_html/items/delete",
+        payload: { ids: ["vec_html_001", "vec_html_002", "vec_html_003", "vec_html_004", "vec_html_005"] },
+        run: async (p) => apiCall("POST", "/namespaces/products_vec_html/items/delete", p)
+      },
+      {
+        id: "t15",
+        name: "15) Namespace Delete docs_html (Async)",
+        path: "DELETE /namespaces/docs_html",
+        payload: null,
+        run: async () => {
+          const out = await apiCall("DELETE", "/namespaces/docs_html");
+          state.docsNamespaceDeleteJobId = out?.data?.job_id || null;
+          return out;
+        }
+      },
+      {
+        id: "t16",
+        name: "16) Namespace Delete Job Status docs_html",
+        path: "GET /namespaces/docs_html/delete-jobs/{job_id}",
+        payload: null,
+        run: async () => {
+          if (!state.docsNamespaceDeleteJobId) return { ok: false, status: 0, data: { message: "No docs namespace delete job id yet." } };
+          return apiCall("GET", `/namespaces/docs_html/delete-jobs/${state.docsNamespaceDeleteJobId}`);
+        }
+      },
+      {
+        id: "t17",
+        name: "17) Namespace Delete products_vec_html (Async)",
+        path: "DELETE /namespaces/products_vec_html",
+        payload: null,
+        run: async () => {
+          const out = await apiCall("DELETE", "/namespaces/products_vec_html");
+          state.vectorNamespaceDeleteJobId = out?.data?.job_id || null;
+          return out;
+        }
+      },
+      {
+        id: "t18",
+        name: "18) Namespace Delete Job Status products_vec_html",
+        path: "GET /namespaces/products_vec_html/delete-jobs/{job_id}",
+        payload: null,
+        run: async () => {
+          if (!state.vectorNamespaceDeleteJobId) return { ok: false, status: 0, data: { message: "No vector namespace delete job id yet." } };
+          return apiCall("GET", `/namespaces/products_vec_html/delete-jobs/${state.vectorNamespaceDeleteJobId}`);
+        }
+      }
+    ];
+
+    function renderTests() {
+      const root = document.getElementById("tests");
+      root.innerHTML = "";
+      tests.forEach((t) => {
+        const card = document.createElement("div");
+        card.className = "card";
+        const payloadText = t.payload ? pretty(t.payload) : "";
+        card.innerHTML = `
+          <h3 class="title">${t.name}</h3>
+          <div class="muted">${t.path}</div>
+          ${t.payload ? `<textarea id="payload-${t.id}">${payloadText}</textarea>` : `<div class="muted" style="margin-top:8px;">No payload</div>`}
+          <div style="margin-top:8px;">
+            <button class="btn" id="btn-${t.id}">Run</button>
+          </div>
+          <pre id="out-${t.id}">Not run yet.</pre>
+        `;
+        root.appendChild(card);
+      });
+
+      tests.forEach((t) => {
+        document.getElementById(`btn-${t.id}`).addEventListener("click", () => runOne(t));
+      });
+    }
+
+    async function runOne(test) {
+      const out = document.getElementById(`out-${test.id}`);
+      out.textContent = "Running...";
+      try {
+        let payload = undefined;
+        if (test.payload) {
+          const raw = document.getElementById(`payload-${test.id}`).value;
+          payload = JSON.parse(raw);
+        }
+        const result = await test.run(payload);
+        out.textContent = pretty(result);
+      } catch (e) {
+        out.textContent = `Error: ${e}`;
+      }
+    }
+
+    async function runAll() {
+      for (const t of tests) {
+        await runOne(t);
+      }
+    }
+
+    document.getElementById("runAllBtn").addEventListener("click", runAll);
+    renderTests();
+  </script>
+</body>
+</html>
