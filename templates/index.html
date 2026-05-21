@@ -22,8 +22,8 @@
   <div class="topbar">
     <label>Target Port:</label>
     <select id="portSelect">
-      <option value="8080">8080</option>
-      <option value="8081" selected>8081</option>
+      <option value="8080" selected>8080</option>
+      <option value="8081">8081</option>
     </select>
     <span class="muted">Default from Flask env: {{ default_server_url }}</span>
     <button class="btn primary" id="runAllBtn">Run All Tests</button>
@@ -166,14 +166,14 @@
         id: "t11",
         name: "11) Search Text",
         path: "POST /search",
-        payload: { query: "Moorcheh HTML test document", namespaces: ["docs_html"], top_k: 5, kiosk_mode: false },
+        payload: { query: "Moorcheh HTML test document", namespaces: ["docs_html"], top_k: 5 },
         run: async (p) => apiCall("POST", "/search", p)
       },
       {
         id: "t12",
         name: "12) Search Vector (5D)",
         path: "POST /search",
-        payload: { query: [0.1, 0.2, 0.3, 0.4, 0.5], namespaces: ["products_vec_html"], top_k: 5, kiosk_mode: false },
+        payload: { query: [0.1, 0.2, 0.3, 0.4, 0.5], namespaces: ["products_vec_html"], top_k: 5 },
         run: async (p) => apiCall("POST", "/search", p)
       },
       {

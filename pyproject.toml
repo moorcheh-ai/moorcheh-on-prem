@@ -3,7 +3,7 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "moorcheh"
+name = "moorcheh-client"
 version = "0.1.0"
 description = "Moorcheh client and runtime launcher for on-prem server containers."
 readme = "README.md"

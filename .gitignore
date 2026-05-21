@@ -18,7 +18,7 @@ benchmark_output/
 
 # Build helpers
 /wheels/
-moorcheh-edge
-moorcheh-edge-client
+
+moorcheh_client.egg-info
 moorcheh.egg-info
 dist
