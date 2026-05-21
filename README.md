@@ -1,56 +1,64 @@
-# Moorcheh Python client
+# moorcheh-client (Python)
 
-Python **CLI** (and optional **Flask** demo) for the Moorcheh on-prem HTTP API. The `moorcheh up` / `moorcheh down` commands start and stop the bundled Docker Compose stack (server + Ollama) using images from Docker Hub—see the **server** repository for API behavior, image tags, and operational details.
-
-## Requirements
-
-- Python 3.10+
-- Docker (for `moorcheh up` / `moorcheh down` only)
+This directory publishes the **`moorcheh-client`** distribution on PyPI. The importable module is still `moorcheh` (`from moorcheh import MoorchehApiClient`).
 
 ## Install
 
-- From PyPI: `pip install moorcheh`
-- From a checkout of this repo: `pip install .` (optional web UI: `pip install .[web]`)
+- `pip install moorcheh-client` (from this directory: `pip install .`)
 
-## Quick start
+Default server image: `moorcheh/server:latest` (override with `moorcheh up --server-image …` or `MOORCHEH_SERVER_IMAGE` to pin a specific release).
 
-- `moorcheh up` — start server and Ollama containers (pulls images as needed).
-- `moorcheh status` — call `GET /health` on `http://localhost:8080` by default.
-- `moorcheh down` — stop the stack.
+## Data directory
 
-Use `--base-url` on commands that call the API if the server is not on the default host/port.
+`moorcheh up` stores your vectors and documents at:
 
-## CLI commands
+- `~/.moorcheh/data` (e.g. `C:\Users\<you>\.moorcheh\data` on Windows)
+- `moorcheh_data_store.json`, `namespace_registry.json`
 
-- `moorcheh up` — start server + Ollama via Compose.
-- `moorcheh down` — stop Compose stack.
-- `moorcheh status` — `GET /health`.
-- `moorcheh namespace-create` — `POST /namespaces`.
-- `moorcheh namespace-list` — `GET /namespaces`.
-- `moorcheh namespace-delete` — `DELETE /namespaces/{namespace_name}`.
-- `moorcheh namespace-delete-job-status` — `GET /namespaces/{namespace_name}/delete-jobs/{job_id}`.
-- `moorcheh upload-documents` — `POST /namespaces/{namespace_name}/documents`.
-- `moorcheh upload-vectors` — `POST /namespaces/{namespace_name}/vectors`.
-- `moorcheh upload-job-status` — `GET /namespaces/{namespace_name}/upload-jobs/{job_id}`.
-- `moorcheh items-get` — `POST /namespaces/{namespace_name}/items/get`.
-- `moorcheh items-delete` — `POST /namespaces/{namespace_name}/items/delete`.
-- `moorcheh search` — `POST /search`.
+`moorcheh down` stops containers but **keeps** `~/.moorcheh`. Back up that folder to save everything.
+
+## CLI Commands
+
+- `moorcheh up` — start Moorcheh; uses host Ollama on `127.0.0.1:11434` when already running
+- `moorcheh down` — stop Moorcheh containers (does not stop host Ollama)
+- `moorcheh status` — `GET /health` (items, max_items, remaining)
+- `moorcheh namespace-create` — create a text or vector namespace
+- `moorcheh namespace-list` — list namespaces and per-namespace `item_count`
+- `moorcheh upload-documents` — `POST /namespaces/{namespace_name}/documents` (async job)
+- `moorcheh upload-vectors` — `POST /namespaces/{namespace_name}/vectors` (async job)
+- `moorcheh upload-job-status` — poll upload job (documents or vectors)
+- `moorcheh items-get` — get items by id within a namespace
+- `moorcheh items-delete` — delete items by id within a namespace
+- `moorcheh namespace-delete` — delete a namespace and all its items
+- `moorcheh search` — semantic search
+
+## Global item limit (100k)
+
+Moorcheh stores at most **100,000 items total** across all namespaces (text + vectors).
+
+- Check quota: `moorcheh status` → `items`, `max_items`, `remaining`
+- Uploads that would add **new** ids over the cap return **409** (entire batch rejected)
+- Re-uploading an existing id in the same namespace is an update and does not use extra quota
+- Deleting items or a namespace frees quota immediately
+
+Item ids are **unique per namespace** (the same id string may exist in different namespaces).
 
 ## Examples
 
-- `moorcheh up`
-- `moorcheh status`
-- `moorcheh namespace-create --name docs --type text`
-- `moorcheh upload-documents --namespace-name docs --documents-file docs-upload.json`
-- `moorcheh upload-vectors --namespace-name products_vec --vectors-file vectors-upload.json`
-- `moorcheh upload-job-status --namespace-name docs --job-id job-1`
-- `moorcheh namespace-delete --namespace-name docs`
-- `moorcheh namespace-delete-job-status --namespace-name docs --job-id job-abc123`
-- `moorcheh items-get --namespace-name docs --ids-json "[\"doc-1\"]"`
-- `moorcheh items-delete --namespace-name docs --ids-json "[\"doc-1\"]"`
-- `moorcheh search --query "on prem retrieval" --namespaces docs --top-k 5 --threshold 0.0 --metadata-json "{\"team\":\"ai\"}"`
+```bash
+moorcheh up
+moorcheh status
+moorcheh namespace-create --name docs --type text
+moorcheh namespace-create --name products_vec --type vector --vector-dimension 768
+moorcheh upload-documents --namespace-name docs --documents-file docs-upload.json
+moorcheh upload-vectors --namespace-name products_vec --vectors-file vectors-upload.json
+moorcheh upload-job-status --namespace-name docs --job-id job-abc123
+moorcheh items-get --namespace-name docs --ids-json "[\"doc-1\"]"
+moorcheh items-delete --namespace-name docs --ids-json "[\"doc-1\"]"
+moorcheh search --query "on prem retrieval" --namespaces docs --top-k 5
+```
 
-Documents upload payload file example (`docs-upload.json`):
+Documents upload payload (`docs-upload.json`):
 
 ```json
 {
@@ -64,17 +72,53 @@ Documents upload payload file example (`docs-upload.json`):
 }
 ```
 
-## Optional Flask demo
+## Python API
 
-Install web extras (`pip install .[web]` from this repo, or include `web` if you publish extras on PyPI), then run:
+```python
+from moorcheh import MoorchehApiClient, MoorchehApiError
 
-- `python app.py`
+client = MoorchehApiClient("http://localhost:8080")
+health = client.health()
+print(health["items"], health["remaining"])
 
-Set `SERVER_BASE_URL` if the API is not at `http://localhost:8080`. The demo proxies requests to `localhost` on the port you choose in the UI.
+try:
+    client.upload_namespace_vectors("products_vec", {"vectors": [...]})
+except MoorchehApiError as e:
+    if e.is_item_limit_exceeded:
+        print(e.body)  # items, max_items, requested_new
+```
 
-## If the default API port is in use
+## Optional Flask Demo App
 
-- Start the stack on another host port: `moorcheh up --server-port 8081`
-- Point CLI calls at it: add `--base-url http://localhost:8081` (and set `SERVER_BASE_URL` for the Flask app).
+```bash
+pip install .[web]
+python client/app.py
+```
 
-Ollama’s default host port is `11434`; resolving conflicts is part of your Docker/host setup and is documented with the **server** runtime, not duplicated here.
+## Ollama: host vs Docker
+
+By default, `moorcheh up` uses Ollama on `http://127.0.0.1:11434` when it is already running (typical on Windows/macOS). It does **not** start a second Ollama container in that case.
+
+```bash
+moorcheh up
+# Using Ollama already running at http://127.0.0.1:11434 (moorcheh-ollama container not started)
+```
+
+Force behavior:
+
+```bash
+moorcheh up --use-host-ollama    # never start moorcheh-ollama
+moorcheh up --bundled-ollama     # always start moorcheh-ollama container
+moorcheh up --bundled-ollama --ollama-port 11435   # bundled Ollama on another host port
+```
+
+## Port conflict fallback
+
+If **8080** is busy:
+
+```bash
+moorcheh up --server-port 8081
+moorcheh status --base-url http://localhost:8081
+```
+
+`moorcheh up` removes stale `moorcheh-onprem-server` (and `moorcheh-ollama` only when starting bundled Ollama). Data persists under `~/.moorcheh/data` across restarts.
