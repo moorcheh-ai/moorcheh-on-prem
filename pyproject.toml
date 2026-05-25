@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=69", "wheel"]
+requires = ["setuptools>=69", "wheel", "setuptools-scm>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "moorcheh-client"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Moorcheh client and runtime launcher for on-prem server containers."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -16,6 +16,14 @@ dependencies = [
 web = [
   "Flask>=3.0.0",
 ]
+dev = [
+  "pytest>=8.0.0",
+  "setuptools-scm>=8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
 
 [project.scripts]
 moorcheh = "moorcheh.cli:main"
@@ -29,3 +37,17 @@ include = ["moorcheh*"]
 
 [tool.setuptools.package-data]
 moorcheh = ["compose/docker-compose.yml"]
+
+[tool.setuptools_scm]
+tag_regex = "^v(?P<version>\\d+\\.\\d+\\.\\d+(-[\\w.]+)?)$"
+git_describe_command = [
+  "git",
+  "describe",
+  "--dirty",
+  "--tags",
+  "--long",
+  "--match",
+  "v[0-9]*",
+]
+fallback_version = "0.0.0"
+write_to = "moorcheh/_version.py"
