@@ -283,6 +283,6 @@ Open `http://localhost:5000`. Requires `moorcheh up` on port 8080.
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.10+ (CI tests 3.10–3.13)
 - Docker Desktop (or Docker Engine)
 - Ollama for embeddings (host install or started via `--bundled-ollama`)
