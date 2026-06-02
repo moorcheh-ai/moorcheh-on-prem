@@ -7,13 +7,16 @@ import urllib.request
 from importlib import resources
 from pathlib import Path
 
+from moorcheh.ollama_setup import ensure_ollama_model, wait_for_ollama
+from moorcheh.user_config import EmbeddingConfig, ensure_embedding_config, load_embedding_config
+
 
 DEFAULT_SERVER_IMAGE = "moorcheh/server:latest"
 DEFAULT_OLLAMA_IMAGE = "ollama/ollama:latest"
-DEFAULT_OLLAMA_MODEL = "nomic-embed-text"
 DEFAULT_OLLAMA_HOST = "127.0.0.1"
 DEFAULT_OLLAMA_PORT = 11434
 HOST_OLLAMA_URL = "http://host.docker.internal:11434"
+BUNDLED_OLLAMA_URL = "http://ollama:11434"
 
 # Must match container_name in compose/docker-compose.yml
 COMPOSE_CONTAINER_NAMES = ("moorcheh-ollama", "moorcheh-onprem-server")
@@ -109,27 +112,50 @@ def remove_stale_compose_containers(*, include_ollama: bool) -> None:
         )
 
 
+def _resolve_ollama_url(*, use_bundled: bool, ollama_port: int) -> str:
+    if use_bundled:
+        return BUNDLED_OLLAMA_URL
+    return HOST_OLLAMA_URL.replace(":11434", f":{ollama_port}")
+
+
 def up(
     server_image: str,
     ollama_image: str,
     server_port: int,
     ollama_port: int,
-    ollama_model: str,
     *,
     bundled_ollama: bool | None = None,
     ollama_host: str = DEFAULT_OLLAMA_HOST,
-) -> tuple[subprocess.CompletedProcess[str], bool, Path]:
+    embedding_provider: str | None = None,
+    embedding_model: str | None = None,
+    embedding_api_key: str | None = None,
+    configure: bool = False,
+    no_configure: bool = False,
+    skip_ollama_model_pull: bool = False,
+) -> tuple[subprocess.CompletedProcess[str], bool, Path, EmbeddingConfig]:
     """
-    Start the Moorcheh stack. Returns (compose result, whether bundled Ollama was started, data_dir).
+    Start the Moorcheh stack. Returns (compose result, whether bundled Ollama was started, data_dir, embedding config).
 
-    When host Ollama is already running on ollama_host:ollama_port, only the server
-    container is started and OLLAMA_URL points at host.docker.internal:11434.
+    When embedding provider is ollama, uses host Ollama if reachable; otherwise starts bundled Ollama.
+    For openai/cohere, only the server container is started.
     """
-    use_bundled = should_use_bundled_ollama(
-        bundled_ollama=bundled_ollama,
-        ollama_host=ollama_host,
-        ollama_port=ollama_port,
+    embedding = ensure_embedding_config(
+        provider=embedding_provider,
+        model=embedding_model,
+        api_key=embedding_api_key,
+        interactive=not no_configure and (configure or embedding_provider is None),
     )
+
+    use_bundled = False
+    if embedding.provider == "ollama":
+        use_bundled = should_use_bundled_ollama(
+            bundled_ollama=bundled_ollama,
+            ollama_host=ollama_host,
+            ollama_port=ollama_port,
+        )
+    elif bundled_ollama is True:
+        print("Note: --bundled-ollama is ignored when embedding provider is not ollama.")
+
     remove_stale_compose_containers(include_ollama=use_bundled)
 
     resolved_data_dir = ensure_data_dir()
@@ -137,38 +163,71 @@ def up(
         "MOORCHEH_SERVER_IMAGE": server_image,
         "OLLAMA_IMAGE": ollama_image,
         "SERVER_PORT": str(server_port),
-        "OLLAMA_MODEL": ollama_model,
         MOORCHEH_DATA_DIR_ENV: docker_bind_path(resolved_data_dir),
+    }
+
+    if embedding.provider == "ollama":
+        if use_bundled:
+            print("Starting bundled Ollama container...")
+            run_compose(
+                ["--profile", "bundled-ollama", "up", "-d", "ollama"],
+                env={**base_env, "OLLAMA_PORT": str(ollama_port)},
+            )
+            print(f"Waiting for Ollama on http://{ollama_host}:{ollama_port}...")
+            if not wait_for_ollama(ollama_host, ollama_port):
+                raise RuntimeError(
+                    f"Bundled Ollama did not become ready on http://{ollama_host}:{ollama_port} in time."
+                )
+            ensure_ollama_model(
+                embedding.model,
+                host=ollama_host,
+                port=ollama_port,
+                interactive=False,
+                pull_if_missing=not skip_ollama_model_pull,
+            )
+        else:
+            ensure_ollama_model(
+                embedding.model,
+                host=ollama_host,
+                port=ollama_port,
+                interactive=False,
+                pull_if_missing=not skip_ollama_model_pull,
+            )
+
+    ollama_url = _resolve_ollama_url(use_bundled=use_bundled, ollama_port=ollama_port) if embedding.provider == "ollama" else None
+    compose_env = {
+        **base_env,
+        **embedding.to_compose_env(ollama_runtime_url=ollama_url),
     }
 
     if use_bundled:
         result = run_compose(
             ["--profile", "bundled-ollama", "up", "-d"],
             env={
-                **base_env,
+                **compose_env,
                 "OLLAMA_PORT": str(ollama_port),
-                "OLLAMA_URL": "http://ollama:11434",
             },
         )
     else:
         result = run_compose(
             ["up", "-d", "server"],
-            env={
-                **base_env,
-                "OLLAMA_URL": HOST_OLLAMA_URL,
-            },
+            env=compose_env,
         )
-    return result, use_bundled, resolved_data_dir
+    return result, use_bundled, resolved_data_dir, embedding
 
 
 def down(*, include_ollama: bool | None = None) -> subprocess.CompletedProcess[str]:
     """
     Stop compose services. When include_ollama is False, only stops the server
     (leaves a bundled ollama container running if it was started separately).
-    None = stop all services defined in the compose file (including profile services
-    that were started).
+    None = if saved config uses a cloud provider, stop server only; otherwise stop
+    the full bundled-ollama profile (server + moorcheh-ollama if running).
     """
     env = {MOORCHEH_DATA_DIR_ENV: docker_bind_path(ensure_data_dir())}
     if include_ollama is False:
         return run_compose(["stop", "server"], env=env)
+    if include_ollama is None:
+        saved = load_embedding_config()
+        if saved and saved.provider != "ollama":
+            return run_compose(["stop", "server"], env=env)
     return run_compose(["--profile", "bundled-ollama", "down"], env=env)
