@@ -9,12 +9,12 @@ from typing import Any
 from moorcheh.api import MoorchehApiClient, MoorchehApiError
 from moorcheh.docker_runtime import (
     DEFAULT_OLLAMA_IMAGE,
-    DEFAULT_OLLAMA_MODEL,
     DEFAULT_SERVER_IMAGE,
     ComposeCommandError,
     down,
     up,
 )
+from moorcheh.user_config import configure_embedding_interactive, config_file_path
 
 
 def _print_json(payload: dict[str, Any]) -> None:
@@ -56,29 +56,38 @@ def cmd_up(args: argparse.Namespace) -> int:
     else:
         bundled_ollama = None
 
-    result, started_bundled_ollama, data_dir = up(
+    result, started_bundled_ollama, data_dir, embedding = up(
         server_image=args.server_image,
         ollama_image=args.ollama_image,
         server_port=args.server_port,
         ollama_port=args.ollama_port,
-        ollama_model=args.ollama_model,
         bundled_ollama=bundled_ollama,
         ollama_host=args.ollama_host,
+        embedding_provider=args.embedding_provider,
+        embedding_model=args.embedding_model,
+        embedding_api_key=args.embedding_api_key,
+        configure=args.configure,
+        no_configure=args.no_configure,
+        skip_ollama_model_pull=args.skip_ollama_model_pull,
     )
     if result.stdout.strip():
         print(result.stdout.strip())
     if result.stderr.strip():
         print(result.stderr.strip(), file=sys.stderr)
     print(f"Data directory: {data_dir}")
-    if started_bundled_ollama:
-        print(
-            f"Started Moorcheh server + Ollama container (Ollama on host port {args.ollama_port})"
-        )
+    print(f"Embedding provider: {embedding.provider}  |  model: {embedding.model}")
+    if embedding.provider == "ollama":
+        if started_bundled_ollama:
+            print(
+                f"Started Moorcheh server + Ollama container (Ollama on host port {args.ollama_port})"
+            )
+        else:
+            print(
+                f"Using Ollama already running at http://{args.ollama_host}:{args.ollama_port} "
+                "(moorcheh-ollama container not started)"
+            )
     else:
-        print(
-            f"Using Ollama already running at http://{args.ollama_host}:{args.ollama_port} "
-            "(moorcheh-ollama container not started)"
-        )
+        print("Moorcheh server started (cloud embedding provider; Ollama not required).")
     print(f"Moorcheh API: http://localhost:{args.server_port}")
     return 0
 
@@ -110,6 +119,14 @@ def cmd_down(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_configure(args: argparse.Namespace) -> int:
+    embedding = configure_embedding_interactive(force=args.force)
+    print(f"Provider: {embedding.provider}")
+    print(f"Model: {embedding.model}")
+    print(f"Config file: {config_file_path()}")
+    return 0
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     client = _api_client(args.base_url)
     health = client.health()
@@ -117,8 +134,10 @@ def cmd_status(args: argparse.Namespace) -> int:
     max_items = health.get("max_items")
     remaining = health.get("remaining")
     if items is not None and max_items is not None:
+        provider = health.get("embedding_provider", "ollama")
         print(
-            f"items: {items} / {max_items}  |  remaining: {remaining}  |  model: {health.get('model')}"
+            f"items: {items} / {max_items}  |  remaining: {remaining}  |  "
+            f"embedding: {provider} / {health.get('model')}"
         )
     _print_json(health)
     return 0
@@ -230,7 +249,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="moorcheh", description="Moorcheh on-prem client and runtime CLI.")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_up = sub.add_parser("up", help="Start server + ollama containers.")
+    p_configure = sub.add_parser(
+        "configure",
+        help="Save embedding provider, model, and API key to ~/.moorcheh/config.json.",
+    )
+    p_configure.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-run interactive setup even if config already exists.",
+    )
+    p_configure.set_defaults(func=cmd_configure)
+
+    p_up = sub.add_parser("up", help="Start Moorcheh server (and Ollama only when configured).")
     p_up.add_argument("--server-image", default=DEFAULT_SERVER_IMAGE)
     p_up.add_argument("--ollama-image", default=DEFAULT_OLLAMA_IMAGE)
     p_up.add_argument("--server-port", type=int, default=8080)
@@ -255,7 +285,33 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Never start moorcheh-ollama; server uses Ollama on the host (port 11434).",
     )
-    p_up.add_argument("--ollama-model", default=DEFAULT_OLLAMA_MODEL)
+    p_up.add_argument(
+        "--embedding-provider",
+        choices=["ollama", "openai", "cohere"],
+        help="Embedding provider (saved to ~/.moorcheh/config.json when set).",
+    )
+    p_up.add_argument("--embedding-model", help="Embedding model name for the chosen provider.")
+    p_up.add_argument(
+        "--ollama-model",
+        dest="embedding_model",
+        help="Deprecated alias for --embedding-model when provider is ollama.",
+    )
+    p_up.add_argument("--embedding-api-key", help="API key for openai/cohere (avoid in shell history).")
+    p_up.add_argument(
+        "--configure",
+        action="store_true",
+        help="Run interactive embedding setup before starting.",
+    )
+    p_up.add_argument(
+        "--no-configure",
+        action="store_true",
+        help="Do not prompt; fail if ~/.moorcheh/config.json is missing.",
+    )
+    p_up.add_argument(
+        "--skip-ollama-model-pull",
+        action="store_true",
+        help="When embedding provider is ollama, do not pull the model if missing (default: pull automatically).",
+    )
     p_up.set_defaults(func=cmd_up)
 
     p_down = sub.add_parser("down", help="Stop and remove runtime containers.")

@@ -232,18 +232,49 @@ For local ops and testing. Most app code should use the **Python API** above.
 
 API commands accept `--base-url http://localhost:8080` (default).
 
+### Embedding configuration
+
+Text namespaces and text search use an embedding provider configured in `~/.moorcheh/config.json`.
+
+On first `moorcheh up`, the CLI prompts for provider (`ollama`, `openai`, `cohere`), then shows a **numbered list of models** for that provider, then API key (for cloud providers only). API base URLs are fixed per provider and injected via container env — users are not asked for URLs.
+
+**Where settings live**
+
+| What | Where |
+|------|--------|
+| Provider, model, API key, base URL | `~/.moorcheh/config.json` on your machine (mode `600`) |
+| Provider API URLs | Code defaults written into `base_url` on save; edit config to override (no prompt during setup) |
+| Search/index data | `~/.moorcheh/data/` (bind-mounted into the container) |
+
+At `moorcheh up`, the CLI reads `config.json` and passes `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, and `EMBEDDING_API_KEY` into the Docker container environment. The API key is not written into the data directory.
+
+```bash
+moorcheh configure
+moorcheh up --embedding-provider openai --embedding-model text-embedding-3-small --embedding-api-key "$OPENAI_API_KEY"
+```
+
+| Provider | Example models (menu) | API key |
+|----------|----------------------|---------|
+| `ollama` | `nomic-embed-text`, `mxbai-embed-large`, … | Not required |
+| `openai` | `text-embedding-3-small`, `text-embedding-3-large`, … | Required |
+| `cohere` | `embed-english-v3.0`, `embed-multilingual-v3.0`, … | Required |
+
 ### `moorcheh up` options
 
 | Flag | Default | Purpose |
 |------|---------|---------|
 | `--server-port` | `8080` | Host port for API |
 | `--server-image` | `moorcheh/server:latest` | Docker image |
-| `--ollama-port` | `11434` | Host port to detect/use Ollama |
+| `--embedding-provider` | from config | `ollama`, `openai`, or `cohere` |
+| `--embedding-model` | from config | Model name for the provider |
+| `--embedding-api-key` | from config | Cloud provider API key |
+| `--configure` | off | Run interactive setup before start |
+| `--no-configure` | off | Fail if `~/.moorcheh/config.json` is missing |
+| `--ollama-port` | `11434` | Host port to detect/use Ollama (ollama provider only) |
 | `--use-host-ollama` | off | Never start `moorcheh-ollama` container |
 | `--bundled-ollama` | off | Always start Ollama in Docker |
-| `--bundled-ollama --ollama-port 11435` | — | Bundled Ollama on another port if 11434 is taken |
 
-By default, if Ollama is already running on `127.0.0.1:11434`, `moorcheh up` reuses it and does not start a second Ollama container.
+When provider is `ollama`, if Ollama is already running on `127.0.0.1:11434`, `moorcheh up` reuses it and does not start a second Ollama container. OpenAI/Cohere only start the Moorcheh server container.
 
 ### CLI example (documents file)
 
@@ -283,6 +314,6 @@ Open `http://localhost:5000`. Requires `moorcheh up` on port 8080.
 
 ## Requirements
 
-- Python 3.10+ (CI tests 3.10–3.13)
+- Python 3.10+
 - Docker Desktop (or Docker Engine)
-- Ollama for embeddings (host install or started via `--bundled-ollama`)
+- Embedding provider: Ollama (host or `--bundled-ollama`), OpenAI, or Cohere (API key in `~/.moorcheh/config.json`)

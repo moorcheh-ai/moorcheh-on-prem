@@ -11,6 +11,7 @@ from moorcheh.cli import (
     _parse_json,
     _parse_json_array,
     build_parser,
+    cmd_configure,
     cmd_down,
     cmd_items_delete,
     cmd_items_get,
@@ -27,9 +28,11 @@ from moorcheh.cli import (
     main,
 )
 from moorcheh.docker_runtime import ComposeCommandError
+from moorcheh.user_config import EmbeddingConfig
 
 
 ALL_COMMANDS = {
+    "configure",
     "up",
     "down",
     "status",
@@ -277,36 +280,76 @@ def test_cmd_search_rejects_invalid_vector_json() -> None:
         cmd_search(args)
 
 
-@patch("moorcheh.cli.up", return_value=(MagicMock(stdout="started\n", stderr=""), True, MagicMock()))
+def _up_args(**overrides: object) -> argparse.Namespace:
+    defaults = {
+        "server_image": "moorcheh/server:latest",
+        "ollama_image": "ollama/ollama:latest",
+        "server_port": 8080,
+        "ollama_port": 11434,
+        "ollama_host": "127.0.0.1",
+        "bundled_ollama": False,
+        "use_host_ollama": False,
+        "embedding_provider": None,
+        "embedding_model": None,
+        "embedding_api_key": None,
+        "configure": False,
+        "no_configure": False,
+        "skip_ollama_model_pull": False,
+    }
+    defaults.update(overrides)
+    return argparse.Namespace(**defaults)
+
+
+@patch(
+    "moorcheh.cli.up",
+    return_value=(
+        MagicMock(stdout="started\n", stderr=""),
+        True,
+        MagicMock(),
+        EmbeddingConfig(provider="ollama", model="nomic-embed-text"),
+    ),
+)
 def test_cmd_up_bundled_ollama(up: MagicMock, capsys: pytest.CaptureFixture[str]) -> None:
-    args = argparse.Namespace(
-        server_image="moorcheh/server:latest",
-        ollama_image="ollama/ollama:latest",
-        server_port=8080,
-        ollama_port=11434,
-        ollama_host="127.0.0.1",
-        bundled_ollama=True,
-        use_host_ollama=False,
-        ollama_model="nomic-embed-text",
-    )
-    assert cmd_up(args) == 0
+    assert cmd_up(_up_args(bundled_ollama=True)) == 0
     up.assert_called_once()
-    assert "Started Moorcheh server + Ollama" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "Started Moorcheh server + Ollama" in out
+    assert "Embedding provider: ollama" in out
+
+
+@patch(
+    "moorcheh.cli.up",
+    return_value=(
+        MagicMock(stdout="", stderr=""),
+        False,
+        MagicMock(),
+        EmbeddingConfig(provider="openai", model="text-embedding-3-small", api_key="sk"),
+    ),
+)
+def test_cmd_up_cloud_provider(up: MagicMock, capsys: pytest.CaptureFixture[str]) -> None:
+    assert cmd_up(_up_args()) == 0
+    out = capsys.readouterr().out
+    assert "cloud embedding provider" in out
+    assert "Embedding provider: openai" in out
+    assert "Ollama not required" in out
 
 
 def test_cmd_up_rejects_conflicting_ollama_flags() -> None:
-    args = argparse.Namespace(
-        server_image="img",
-        ollama_image="img",
-        server_port=8080,
-        ollama_port=11434,
-        ollama_host="127.0.0.1",
-        bundled_ollama=True,
-        use_host_ollama=True,
-        ollama_model="m",
-    )
     with pytest.raises(ValueError, match="only one of"):
-        cmd_up(args)
+        cmd_up(_up_args(bundled_ollama=True, use_host_ollama=True))
+
+
+@patch(
+    "moorcheh.cli.configure_embedding_interactive",
+    return_value=EmbeddingConfig(provider="cohere", model="embed-v4.0", api_key="key"),
+)
+def test_cmd_configure(configure: MagicMock, capsys: pytest.CaptureFixture[str]) -> None:
+    args = argparse.Namespace(force=False)
+    assert cmd_configure(args) == 0
+    configure.assert_called_once_with(force=False)
+    out = capsys.readouterr().out
+    assert "Provider: cohere" in out
+    assert "Model: embed-v4.0" in out
 
 
 @patch("moorcheh.cli.down", return_value=MagicMock(stdout="", stderr=""))
