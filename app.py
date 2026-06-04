@@ -7,16 +7,33 @@ from typing import Any
 import requests
 from flask import Flask, jsonify, render_template, request
 
+from moorcheh.user_config import LLM_PROVIDER_MODELS, load_embedding_config, load_llm_config
+
 
 SERVER_BASE_URL = os.getenv("SERVER_BASE_URL", "http://localhost:8080")
 FLASK_HOST = os.getenv("FLASK_HOST", "0.0.0.0")
 FLASK_PORT = int(os.getenv("FLASK_PORT", "5000"))
+DEFAULT_PROXY_TIMEOUT = int(os.getenv("MOORCHEH_PROXY_TIMEOUT", "30"))
+ANSWER_PROXY_TIMEOUT = int(os.getenv("MOORCHEH_ANSWER_TIMEOUT", "180"))
 
 app = Flask(__name__)
 
+
+def _llm_models_for_template() -> dict[str, list[str]]:
+    return {provider: [model_id for model_id, _ in models] for provider, models in LLM_PROVIDER_MODELS.items()}
+
+
 @app.route("/", methods=["GET"])
 def index():
-    return render_template("index.html", default_server_url=SERVER_BASE_URL)
+    embedding = load_embedding_config()
+    llm = load_llm_config(embedding=embedding)
+    return render_template(
+        "index.html",
+        default_server_url=SERVER_BASE_URL,
+        llm_models_json=json.dumps(_llm_models_for_template()),
+        saved_llm_provider=llm.provider if llm else "ollama",
+        saved_llm_model=llm.model if llm else "qwen2.5",
+    )
 
 
 @app.route("/proxy", methods=["POST"])
@@ -33,13 +50,14 @@ def proxy():
         return jsonify({"ok": False, "status": 400, "data": {"message": "path must start with /"}}), 400
 
     target_url = f"http://localhost:{port}{path}"
+    timeout = ANSWER_PROXY_TIMEOUT if path == "/answer" else DEFAULT_PROXY_TIMEOUT
     try:
         if method == "GET":
-            res = requests.get(target_url, timeout=30)
+            res = requests.get(target_url, timeout=timeout)
         elif method == "POST":
-            res = requests.post(target_url, json=payload, timeout=30)
+            res = requests.post(target_url, json=payload, timeout=timeout)
         else:
-            res = requests.delete(target_url, json=payload, timeout=30)
+            res = requests.delete(target_url, json=payload, timeout=timeout)
     except Exception as exc:  # pragma: no cover
         app.logger.exception("Proxy request failed: %s", exc)
         return jsonify({"ok": False, "status": 0, "data": {"message": "request to upstream service failed"}}), 200

@@ -148,6 +148,16 @@ def test_search(client: MoorchehApiClient) -> None:
     post.assert_called_once_with("http://localhost:8080/search", json=body, timeout=15)
 
 
+def test_answer(client: MoorchehApiClient) -> None:
+    body = {"query": "hello", "namespace": ""}
+    with patch(
+        "moorcheh.api.requests.post",
+        return_value=_mock_response(ok=True, status_code=200, json_data={"answer": "hi"}),
+    ) as post:
+        assert client.answer(body) == {"answer": "hi"}
+    post.assert_called_once_with("http://localhost:8080/answer", json=body, timeout=15)
+
+
 def test_api_error_uses_message_from_body(client: MoorchehApiClient) -> None:
     response = _mock_response(
         ok=False,

@@ -8,7 +8,7 @@ from importlib import resources
 from pathlib import Path
 
 from moorcheh.ollama_setup import ensure_ollama_model, wait_for_ollama
-from moorcheh.user_config import EmbeddingConfig, ensure_embedding_config, load_embedding_config
+from moorcheh.user_config import EmbeddingConfig, LlmConfig, ensure_embedding_config, load_embedding_config, load_llm_config
 
 
 DEFAULT_SERVER_IMAGE = "moorcheh/server:latest"
@@ -132,7 +132,7 @@ def up(
     configure: bool = False,
     no_configure: bool = False,
     skip_ollama_model_pull: bool = False,
-) -> tuple[subprocess.CompletedProcess[str], bool, Path, EmbeddingConfig]:
+) -> tuple[subprocess.CompletedProcess[str], bool, Path, EmbeddingConfig, LlmConfig]:
     """
     Start the Moorcheh stack. Returns (compose result, whether bundled Ollama was started, data_dir, embedding config).
 
@@ -145,9 +145,10 @@ def up(
         api_key=embedding_api_key,
         interactive=not no_configure and (configure or embedding_provider is None),
     )
+    llm = load_llm_config(embedding=embedding) or LlmConfig.default_for_embedding(embedding)
 
     use_bundled = False
-    if embedding.provider == "ollama":
+    if embedding.provider == "ollama" or llm.provider == "ollama":
         use_bundled = should_use_bundled_ollama(
             bundled_ollama=bundled_ollama,
             ollama_host=ollama_host,
@@ -166,7 +167,7 @@ def up(
         MOORCHEH_DATA_DIR_ENV: docker_bind_path(resolved_data_dir),
     }
 
-    if embedding.provider == "ollama":
+    if embedding.provider == "ollama" or llm.provider == "ollama":
         if use_bundled:
             print("Starting bundled Ollama container...")
             run_compose(
@@ -178,26 +179,49 @@ def up(
                 raise RuntimeError(
                     f"Bundled Ollama did not become ready on http://{ollama_host}:{ollama_port} in time."
                 )
-            ensure_ollama_model(
-                embedding.model,
-                host=ollama_host,
-                port=ollama_port,
-                interactive=False,
-                pull_if_missing=not skip_ollama_model_pull,
-            )
+            if embedding.provider == "ollama":
+                ensure_ollama_model(
+                    embedding.model,
+                    host=ollama_host,
+                    port=ollama_port,
+                    interactive=False,
+                    pull_if_missing=not skip_ollama_model_pull,
+                )
+            if llm.provider == "ollama" and llm.model != embedding.model:
+                ensure_ollama_model(
+                    llm.model,
+                    host=ollama_host,
+                    port=ollama_port,
+                    interactive=False,
+                    pull_if_missing=not skip_ollama_model_pull,
+                )
         else:
-            ensure_ollama_model(
-                embedding.model,
-                host=ollama_host,
-                port=ollama_port,
-                interactive=False,
-                pull_if_missing=not skip_ollama_model_pull,
-            )
+            if embedding.provider == "ollama":
+                ensure_ollama_model(
+                    embedding.model,
+                    host=ollama_host,
+                    port=ollama_port,
+                    interactive=False,
+                    pull_if_missing=not skip_ollama_model_pull,
+                )
+            if llm.provider == "ollama":
+                ensure_ollama_model(
+                    llm.model,
+                    host=ollama_host,
+                    port=ollama_port,
+                    interactive=False,
+                    pull_if_missing=not skip_ollama_model_pull,
+                )
 
-    ollama_url = _resolve_ollama_url(use_bundled=use_bundled, ollama_port=ollama_port) if embedding.provider == "ollama" else None
+    ollama_url = (
+        _resolve_ollama_url(use_bundled=use_bundled, ollama_port=ollama_port)
+        if embedding.provider == "ollama" or llm.provider == "ollama"
+        else None
+    )
     compose_env = {
         **base_env,
         **embedding.to_compose_env(ollama_runtime_url=ollama_url),
+        **llm.to_compose_env(ollama_runtime_url=ollama_url, embedding=embedding),
     }
 
     if use_bundled:
@@ -213,7 +237,7 @@ def up(
             ["up", "-d", "server"],
             env=compose_env,
         )
-    return result, use_bundled, resolved_data_dir, embedding
+    return result, use_bundled, resolved_data_dir, embedding, llm
 
 
 def down(*, include_ollama: bool | None = None) -> subprocess.CompletedProcess[str]:

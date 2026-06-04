@@ -14,7 +14,7 @@ from moorcheh.docker_runtime import (
     down,
     up,
 )
-from moorcheh.user_config import configure_embedding_interactive, config_file_path
+from moorcheh.user_config import configure_embedding_interactive, config_file_path, load_llm_config
 
 
 def _print_json(payload: dict[str, Any]) -> None:
@@ -56,7 +56,7 @@ def cmd_up(args: argparse.Namespace) -> int:
     else:
         bundled_ollama = None
 
-    result, started_bundled_ollama, data_dir, embedding = up(
+    result, started_bundled_ollama, data_dir, embedding, llm = up(
         server_image=args.server_image,
         ollama_image=args.ollama_image,
         server_port=args.server_port,
@@ -76,7 +76,8 @@ def cmd_up(args: argparse.Namespace) -> int:
         print(result.stderr.strip(), file=sys.stderr)
     print(f"Data directory: {data_dir}")
     print(f"Embedding provider: {embedding.provider}  |  model: {embedding.model}")
-    if embedding.provider == "ollama":
+    print(f"LLM provider: {llm.provider}  |  model: {llm.model}")
+    if embedding.provider == "ollama" or llm.provider == "ollama":
         if started_bundled_ollama:
             print(
                 f"Started Moorcheh server + Ollama container (Ollama on host port {args.ollama_port})"
@@ -121,9 +122,16 @@ def cmd_down(args: argparse.Namespace) -> int:
 
 def cmd_configure(args: argparse.Namespace) -> int:
     embedding = configure_embedding_interactive(force=args.force)
-    print(f"Provider: {embedding.provider}")
-    print(f"Model: {embedding.model}")
+    llm = load_llm_config(embedding=embedding)
+    print(f"Embedding: {embedding.provider}  |  model: {embedding.model}")
+    if llm:
+        print(f"LLM:       {llm.provider}  |  model: {llm.model}")
     print(f"Config file: {config_file_path()}")
+    print(
+        "\nConfig is saved on disk only. To apply it to the running server, recreate the container:\n"
+        "  moorcheh down\n"
+        "  moorcheh up"
+    )
     return 0
 
 
@@ -137,7 +145,8 @@ def cmd_status(args: argparse.Namespace) -> int:
         provider = health.get("embedding_provider", "ollama")
         print(
             f"items: {items} / {max_items}  |  remaining: {remaining}  |  "
-            f"embedding: {provider} / {health.get('model')}"
+            f"embedding: {provider} / {health.get('model')}  |  "
+            f"llm: {health.get('llm_provider')} / {health.get('llm_model')}"
         )
     _print_json(health)
     return 0
@@ -242,6 +251,34 @@ def cmd_search(args: argparse.Namespace) -> int:
     _print_json(
         client.search(payload)
     )
+    return 0
+
+
+def cmd_answer(args: argparse.Namespace) -> int:
+    client = _api_client(args.base_url)
+    payload: dict[str, Any] = {
+        "query": args.query,
+        "namespace": args.namespace,
+    }
+    if args.top_k is not None:
+        payload["top_k"] = args.top_k
+    if args.temperature is not None:
+        payload["temperature"] = args.temperature
+    if args.ai_model:
+        payload["ai_model"] = args.ai_model
+    if args.header_prompt:
+        payload["header_prompt"] = args.header_prompt
+    if args.footer_prompt:
+        payload["footer_prompt"] = args.footer_prompt
+    if args.kiosk_mode:
+        payload["kiosk_mode"] = True
+    if args.threshold is not None:
+        payload["threshold"] = args.threshold
+    if args.chat_history_json:
+        payload["chat_history"] = _parse_json_array(args.chat_history_json, "chat_history_json")
+    if args.structured:
+        payload["structured_response"] = {"enabled": True}
+    _print_json(client.answer(payload))
     return 0
 
 
@@ -390,6 +427,32 @@ def build_parser() -> argparse.ArgumentParser:
     p_search.add_argument("--threshold", type=float, default=0.0)
     p_search.add_argument("--metadata-json", default="{}")
     p_search.set_defaults(func=cmd_search)
+
+    p_answer = sub.add_parser("answer", help="Call /answer endpoint.")
+    p_answer.add_argument("--base-url", default="http://localhost:8080")
+    p_answer.add_argument("--query", required=True)
+    p_answer.add_argument(
+        "--namespace",
+        default="",
+        help='Namespace for RAG search mode, or "" (default) for direct LLM.',
+    )
+    p_answer.add_argument("--top-k", type=int)
+    p_answer.add_argument("--temperature", type=float)
+    p_answer.add_argument("--ai-model", help="Override configured LLM model.")
+    p_answer.add_argument("--header-prompt")
+    p_answer.add_argument("--footer-prompt")
+    p_answer.add_argument("--threshold", type=float)
+    p_answer.add_argument("--kiosk-mode", action="store_true")
+    p_answer.add_argument(
+        "--chat-history-json",
+        help='JSON array of {"role":"user"|"assistant","content":"..."} turns.',
+    )
+    p_answer.add_argument(
+        "--structured",
+        action="store_true",
+        help="Enable structured_response with the default schema.",
+    )
+    p_answer.set_defaults(func=cmd_answer)
 
     return parser
 

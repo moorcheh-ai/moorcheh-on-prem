@@ -19,6 +19,7 @@ from moorcheh.cli import (
     cmd_namespace_delete,
     cmd_namespace_delete_job_status,
     cmd_namespace_list,
+    cmd_answer,
     cmd_search,
     cmd_status,
     cmd_up,
@@ -28,7 +29,7 @@ from moorcheh.cli import (
     main,
 )
 from moorcheh.docker_runtime import ComposeCommandError
-from moorcheh.user_config import EmbeddingConfig
+from moorcheh.user_config import EmbeddingConfig, LlmConfig
 
 
 ALL_COMMANDS = {
@@ -46,6 +47,7 @@ ALL_COMMANDS = {
     "items-get",
     "items-delete",
     "search",
+    "answer",
 }
 
 
@@ -252,6 +254,26 @@ def test_cmd_search_vector(search: MagicMock) -> None:
     )
 
 
+@patch.object(MoorchehApiClient, "answer", return_value={"answer": "hi", "model": "llama3.2"})
+def test_cmd_answer_direct(answer: MagicMock) -> None:
+    args = argparse.Namespace(
+        base_url="http://localhost:8080",
+        query="hello",
+        namespace="",
+        top_k=None,
+        temperature=0.5,
+        ai_model=None,
+        header_prompt=None,
+        footer_prompt=None,
+        threshold=None,
+        kiosk_mode=False,
+        chat_history_json=None,
+        structured=False,
+    )
+    assert cmd_answer(args) == 0
+    answer.assert_called_once_with({"query": "hello", "namespace": "", "temperature": 0.5})
+
+
 def test_cmd_search_requires_query_or_vector() -> None:
     args = argparse.Namespace(
         base_url="http://localhost:8080",
@@ -307,6 +329,7 @@ def _up_args(**overrides: object) -> argparse.Namespace:
         True,
         MagicMock(),
         EmbeddingConfig(provider="ollama", model="nomic-embed-text"),
+        LlmConfig(provider="ollama", model="llama3.2"),
     ),
 )
 def test_cmd_up_bundled_ollama(up: MagicMock, capsys: pytest.CaptureFixture[str]) -> None:
@@ -324,6 +347,7 @@ def test_cmd_up_bundled_ollama(up: MagicMock, capsys: pytest.CaptureFixture[str]
         False,
         MagicMock(),
         EmbeddingConfig(provider="openai", model="text-embedding-3-small", api_key="sk"),
+        LlmConfig(provider="openai", model="gpt-4o-mini", api_key="sk"),
     ),
 )
 def test_cmd_up_cloud_provider(up: MagicMock, capsys: pytest.CaptureFixture[str]) -> None:
@@ -340,16 +364,26 @@ def test_cmd_up_rejects_conflicting_ollama_flags() -> None:
 
 
 @patch(
+    "moorcheh.cli.load_llm_config",
+    return_value=LlmConfig(provider="cohere", model="command-r-plus-08-2024", api_key="key"),
+)
+@patch(
     "moorcheh.cli.configure_embedding_interactive",
     return_value=EmbeddingConfig(provider="cohere", model="embed-v4.0", api_key="key"),
 )
-def test_cmd_configure(configure: MagicMock, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cmd_configure(
+    configure: MagicMock,
+    _load_llm: MagicMock,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     args = argparse.Namespace(force=False)
     assert cmd_configure(args) == 0
     configure.assert_called_once_with(force=False)
     out = capsys.readouterr().out
-    assert "Provider: cohere" in out
-    assert "Model: embed-v4.0" in out
+    assert "Embedding: cohere" in out
+    assert "embed-v4.0" in out
+    assert "LLM:       cohere" in out
+    assert "moorcheh down" in out
 
 
 @patch("moorcheh.cli.down", return_value=MagicMock(stdout="", stderr=""))

@@ -107,3 +107,7 @@ class MoorchehApiClient:
 
     def search(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._post("/search", payload)
+
+    def answer(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """POST /answer — RAG answer (namespace set) or direct LLM (empty namespace)."""
+        return self._post("/answer", payload)
