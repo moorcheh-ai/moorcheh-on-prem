@@ -8,10 +8,65 @@ import pytest
 
 from moorcheh.user_config import (
     EmbeddingConfig,
+    _print_existing_data_warning,
     ensure_embedding_config,
+    has_existing_stored_data,
     load_embedding_config,
+    recommended_embedding_model,
+    recommended_llm_model,
     save_embedding_config,
 )
+
+
+def test_recommended_ollama_models_use_second_list_entry() -> None:
+    assert recommended_embedding_model("ollama") == "mxbai-embed-large"
+    assert recommended_llm_model("ollama") == "qwen2.5"
+    assert recommended_embedding_model("openai") == "text-embedding-3-small"
+
+
+def test_has_existing_stored_data_detects_items(tmp_path: Path) -> None:
+    store = tmp_path / "moorcheh_data_store.json"
+    store.write_text(json.dumps({"moorcheh_data_store": [{"id": "a"}]}), encoding="utf-8")
+    assert has_existing_stored_data(tmp_path) is True
+
+
+def test_has_existing_stored_data_detects_namespaces(tmp_path: Path) -> None:
+    registry = tmp_path / "namespace_registry.json"
+    registry.write_text(
+        json.dumps([{"namespace_name": "docs", "type": "text"}]),
+        encoding="utf-8",
+    )
+    assert has_existing_stored_data(tmp_path) is True
+
+
+def test_has_existing_stored_data_empty_dir(tmp_path: Path) -> None:
+    assert has_existing_stored_data(tmp_path) is False
+
+
+def test_print_existing_data_warning_when_data_present(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "namespace_registry.json").write_text(
+        json.dumps([{"name": "docs", "type": "text"}]),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("moorcheh.user_config.default_data_dir", lambda: tmp_path)
+    _print_existing_data_warning()
+    captured = capsys.readouterr()
+    assert "WARNING: existing Moorcheh data detected" in captured.out
+    assert str(tmp_path) in captured.out
+
+
+def test_print_existing_data_warning_silent_when_empty(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("moorcheh.user_config.default_data_dir", lambda: tmp_path)
+    _print_existing_data_warning()
+    assert capsys.readouterr().out == ""
 
 
 def test_embedding_config_requires_api_key() -> None:

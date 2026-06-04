@@ -12,12 +12,17 @@ CONFIG_DIR_NAME = ".moorcheh"
 CONFIG_FILE_NAME = "config.json"
 
 PROVIDER_CHOICES = ("ollama", "openai", "cohere")
+DEFAULT_PROVIDER = "ollama"
+
+DATA_SUBDIR_NAME = "data"
+DATA_STORE_FILENAME = "moorcheh_data_store.json"
+NAMESPACE_REGISTRY_FILENAME = "namespace_registry.json"
 
 # Curated models per provider (id, short label). Shown as a numbered menu during setup.
 PROVIDER_MODELS: dict[str, list[tuple[str, str]]] = {
     "ollama": [
-        ("nomic-embed-text", "Nomic Embed Text (recommended)"),
-        ("mxbai-embed-large", "Mixedbread Embed Large"),
+        ("mxbai-embed-large", "Mixedbread Embed Large (recommended)"),
+        ("nomic-embed-text", "Nomic Embed Text"),
         ("all-minilm", "All-MiniLM"),
     ],
     "openai": [
@@ -29,6 +34,24 @@ PROVIDER_MODELS: dict[str, list[tuple[str, str]]] = {
         ("embed-v4.0", "Embed v4 — multimodal, 1536 dims (recommended)"),
         ("embed-english-v3.0", "Embed English v3 — 1024 dims, English"),
         ("embed-multilingual-v3.0", "Embed Multilingual v3 — 1024 dims, 100+ languages"),
+    ],
+}
+
+LLM_PROVIDER_MODELS: dict[str, list[tuple[str, str]]] = {
+    "ollama": [
+        ("qwen2.5", "Qwen 2.5 (recommended)"),
+        ("llama3.2", "Llama 3.2"),
+        ("mistral", "Mistral"),
+    ],
+    "openai": [
+        ("gpt-5.5", "GPT-5.5 (recommended)"),
+        ("gpt-5", "GPT-5"),
+        ("gpt-4o-mini", "GPT-4o Mini"),
+    ],
+    "cohere": [
+        ("command-a-plus-05-2026", "Command A+ (recommended)"),
+        ("command-r-plus-08-2024", "Command R+"),
+        ("command-r-08-2024", "Command R"),
     ],
 }
 
@@ -45,6 +68,101 @@ def default_base_url(provider: str) -> str:
     return DEFAULT_PROVIDER_BASE_URLS[provider]
 
 
+def default_data_dir() -> Path:
+    return Path.home() / CONFIG_DIR_NAME / DATA_SUBDIR_NAME
+
+
+def _recommended_model_index(_provider: str) -> int:
+    """Recommended model is always the first entry in each provider list."""
+    return 0
+
+
+def recommended_embedding_model(provider: str) -> str:
+    models = PROVIDER_MODELS[provider]
+    return models[_recommended_model_index(provider)][0]
+
+
+def recommended_llm_model(provider: str) -> str:
+    models = LLM_PROVIDER_MODELS[provider]
+    return models[_recommended_model_index(provider)][0]
+
+
+def has_existing_stored_data(data_dir: Path | None = None) -> bool:
+    """True when ~/.moorcheh/data already contains namespaces or indexed items."""
+    root = data_dir or default_data_dir()
+    store_path = root / DATA_STORE_FILENAME
+    registry_path = root / NAMESPACE_REGISTRY_FILENAME
+
+    if store_path.is_file():
+        try:
+            payload = json.loads(store_path.read_text(encoding="utf-8"))
+            items: list[Any] | None = None
+            if isinstance(payload, dict):
+                # Server persists items under "moorcheh_data_store" (see store.rs).
+                raw = payload.get("moorcheh_data_store")
+                if isinstance(raw, list):
+                    items = raw
+                else:
+                    legacy = payload.get("items")
+                    if isinstance(legacy, list):
+                        items = legacy
+            if items:
+                return True
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    if registry_path.is_file():
+        try:
+            payload = json.loads(registry_path.read_text(encoding="utf-8"))
+            # Server persists namespaces as a top-level JSON array.
+            if isinstance(payload, list) and payload:
+                return True
+            if isinstance(payload, dict):
+                namespaces = payload.get("namespaces")
+                if isinstance(namespaces, list) and namespaces:
+                    return True
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    return False
+
+
+def _print_existing_data_warning() -> None:
+    """Inform the user before they change embedding settings (no confirmation)."""
+    if not has_existing_stored_data():
+        return
+    print("\n*** WARNING: existing Moorcheh data detected ***")
+    print(f"Data directory: {default_data_dir()}")
+    print(
+        "You already have namespaces and/or documents stored locally. "
+        "Changing the embedding provider or model will break semantic search and "
+        "/answer for existing text namespaces — those vectors were built with your "
+        "previous embedding model and dimensions."
+    )
+    print("Keep your current embedding settings, or re-upload all text documents after changing.")
+
+
+def _confirm_embedding_change_if_data_exists(
+    *,
+    existing: EmbeddingConfig | None,
+    new_provider: str,
+    new_model: str,
+) -> None:
+    if not has_existing_stored_data():
+        return
+    if (
+        existing is not None
+        and existing.provider == new_provider
+        and existing.model == new_model
+    ):
+        return
+
+    _print_existing_data_warning()
+    confirm = input("Continue with new embedding settings anyway? [y/N]: ").strip().lower()
+    if confirm not in ("y", "yes"):
+        raise SystemExit("Configure cancelled; existing data kept with previous settings.")
+
+
 @dataclass
 class EmbeddingConfig:
     provider: str
@@ -56,7 +174,7 @@ class EmbeddingConfig:
         return self.provider != "ollama"
 
     def default_model(self) -> str:
-        return PROVIDER_MODELS[self.provider][0][0]
+        return recommended_embedding_model(self.provider)
 
     def resolved_base_url(self, *, ollama_runtime_url: str | None = None) -> str:
         """
@@ -79,7 +197,7 @@ class EmbeddingConfig:
         """Return a copy with model/base_url filled from code defaults when missing."""
         return EmbeddingConfig(
             provider=self.provider,
-            model=self.model or PROVIDER_MODELS[self.provider][0][0],
+            model=self.model or recommended_embedding_model(self.provider),
             api_key=self.api_key,
             base_url=self.base_url or default_base_url(self.provider),
         )
@@ -106,7 +224,7 @@ class EmbeddingConfig:
             raise ValueError("config embedding.provider is empty; run 'moorcheh configure --force'")
         if provider not in PROVIDER_CHOICES:
             raise ValueError(f"unsupported provider '{provider}'")
-        default_model = PROVIDER_MODELS[provider][0][0]
+        default_model = recommended_embedding_model(provider)
         model = str(data.get("model") or default_model).strip()
         api_key = data.get("api_key")
         if isinstance(api_key, str):
@@ -119,6 +237,95 @@ class EmbeddingConfig:
         else:
             base_url = None
         return cls(provider=provider, model=model, api_key=api_key, base_url=base_url)
+
+
+@dataclass
+class LlmConfig:
+    provider: str
+    model: str
+    api_key: str | None = None
+    base_url: str | None = None
+
+    def requires_api_key(self) -> bool:
+        return self.provider != "ollama"
+
+    def default_model(self) -> str:
+        return recommended_llm_model(self.provider)
+
+    def resolved_base_url(
+        self,
+        *,
+        ollama_runtime_url: str | None = None,
+        embedding: EmbeddingConfig | None = None,
+    ) -> str:
+        if self.provider == "ollama":
+            if ollama_runtime_url:
+                return ollama_runtime_url
+            if self.base_url:
+                return self.base_url
+            return default_base_url("ollama")
+        if self.base_url:
+            return self.base_url
+        if embedding and embedding.provider == self.provider and embedding.base_url:
+            return embedding.resolved_base_url(ollama_runtime_url=ollama_runtime_url)
+        return default_base_url(self.provider)
+
+    def with_provider_defaults(self) -> LlmConfig:
+        return LlmConfig(
+            provider=self.provider,
+            model=self.model or recommended_llm_model(self.provider),
+            api_key=self.api_key,
+            base_url=self.base_url or default_base_url(self.provider),
+        )
+
+    def to_compose_env(
+        self,
+        *,
+        ollama_runtime_url: str | None = None,
+        embedding: EmbeddingConfig | None = None,
+    ) -> dict[str, str]:
+        base_url = self.resolved_base_url(
+            ollama_runtime_url=ollama_runtime_url,
+            embedding=embedding,
+        )
+        env: dict[str, str] = {
+            "LLM_PROVIDER": self.provider,
+            "LLM_MODEL": self.model,
+            "LLM_BASE_URL": base_url,
+        }
+        if self.api_key:
+            env["LLM_API_KEY"] = self.api_key
+        elif embedding and embedding.api_key and embedding.provider == self.provider:
+            env["LLM_API_KEY"] = embedding.api_key
+        return env
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> LlmConfig:
+        provider = str(data.get("provider", "ollama")).strip().lower()
+        if provider not in PROVIDER_CHOICES:
+            raise ValueError(f"unsupported LLM provider '{provider}'")
+        default_model = recommended_llm_model(provider)
+        model = str(data.get("model") or default_model).strip()
+        api_key = data.get("api_key")
+        if isinstance(api_key, str):
+            api_key = api_key.strip() or None
+        else:
+            api_key = None
+        base_url = data.get("base_url")
+        if isinstance(base_url, str):
+            base_url = base_url.strip() or None
+        else:
+            base_url = None
+        return cls(provider=provider, model=model, api_key=api_key, base_url=base_url)
+
+    @classmethod
+    def default_for_embedding(cls, embedding: EmbeddingConfig) -> LlmConfig:
+        return cls(
+            provider=embedding.provider,
+            model=recommended_llm_model(embedding.provider),
+            api_key=embedding.api_key,
+            base_url=embedding.base_url or default_base_url(embedding.provider),
+        )
 
 
 def config_dir() -> Path:
@@ -146,25 +353,50 @@ def load_embedding_config() -> EmbeddingConfig | None:
     return EmbeddingConfig.from_dict(embedding)
 
 
-def save_embedding_config(config: EmbeddingConfig) -> Path:
-    config = config.with_provider_defaults()
+def load_llm_config(*, embedding: EmbeddingConfig | None = None) -> LlmConfig | None:
+    raw = load_config()
+    if not raw:
+        return None
+    llm = raw.get("llm")
+    if isinstance(llm, dict):
+        return LlmConfig.from_dict(llm)
+    if embedding:
+        return LlmConfig.default_for_embedding(embedding)
+    return None
+
+
+def save_runtime_config(embedding: EmbeddingConfig, llm: LlmConfig) -> Path:
+    embedding = embedding.with_provider_defaults()
+    llm = llm.with_provider_defaults()
     path = config_file_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     payload: dict[str, Any] = {
         "embedding": {
-            "provider": config.provider,
-            "model": config.model,
-            "base_url": config.base_url,
-        }
+            "provider": embedding.provider,
+            "model": embedding.model,
+            "base_url": embedding.base_url,
+        },
+        "llm": {
+            "provider": llm.provider,
+            "model": llm.model,
+            "base_url": llm.base_url,
+        },
     }
-    if config.api_key:
-        payload["embedding"]["api_key"] = config.api_key
+    if embedding.api_key:
+        payload["embedding"]["api_key"] = embedding.api_key
+    if llm.api_key:
+        payload["llm"]["api_key"] = llm.api_key
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     try:
         os.chmod(path, 0o600)
     except OSError:
         pass
     return path
+
+
+def save_embedding_config(config: EmbeddingConfig) -> Path:
+    llm = load_llm_config(embedding=config) or LlmConfig.default_for_embedding(config)
+    return save_runtime_config(config, llm)
 
 
 def _prompt_choice(prompt: str, choices: tuple[str, ...], default: str) -> str:
@@ -178,25 +410,82 @@ def _prompt_choice(prompt: str, choices: tuple[str, ...], default: str) -> str:
         print(f"Choose one of: {', '.join(choices)}")
 
 
-def _prompt_model_for_provider(provider: str) -> str:
-    models = PROVIDER_MODELS[provider]
-    print(f"\nSelect an embedding model for {provider}:")
-    for index, (model_id, label) in enumerate(models, start=1):
-        print(f"  {index}. {label}  ({model_id})")
-    default_model = models[0][0]
+def _prompt_model_for_provider(
+    provider: str,
+    *,
+    models: dict[str, list[tuple[str, str]]] | None = None,
+    label: str = "embedding",
+) -> str:
+    catalog = models or PROVIDER_MODELS
+    choices = catalog[provider]
+    default_choice = _recommended_model_index(provider) + 1
+    default_model = choices[_recommended_model_index(provider)][0]
+    print(f"\nSelect an {label} model for {provider}:")
+    for index, (model_id, model_label) in enumerate(choices, start=1):
+        print(f"  {index}. {model_label}  ({model_id})")
     while True:
-        raw = input(f"Choice [1-{len(models)}] (default: 1): ").strip()
+        raw = input(f"Choice [1-{len(choices)}] (default: {default_choice}): ").strip()
         if not raw:
             return default_model
         if raw.isdigit():
             choice = int(raw)
-            if 1 <= choice <= len(models):
-                return models[choice - 1][0]
-        print(f"Enter a number from 1 to {len(models)}, or press Enter for the default.")
+            if 1 <= choice <= len(choices):
+                return choices[choice - 1][0]
+        print(f"Enter a number from 1 to {len(choices)}, or press Enter for the default.")
+
+
+def _prompt_llm_model_for_provider(provider: str) -> str:
+    return _prompt_model_for_provider(
+        provider,
+        models=LLM_PROVIDER_MODELS,
+        label="LLM",
+    )
+
+
+def _configure_llm_interactive(embedding: EmbeddingConfig) -> LlmConfig:
+    print("\nConfigure the LLM for /answer (AI generation).")
+    same = input(
+        f"Use the same provider as embeddings ({embedding.provider})? [Y/n]: "
+    ).strip().lower()
+    if same in ("", "y", "yes"):
+        provider = embedding.provider
+    else:
+        provider = _prompt_choice("LLM provider", PROVIDER_CHOICES, embedding.provider)
+
+    model = _prompt_llm_model_for_provider(provider)
+
+    api_key: str | None = None
+    if provider != "ollama":
+        if embedding.provider == provider and embedding.api_key:
+            reuse = input(f"Reuse saved API key for {provider}? [Y/n]: ").strip().lower()
+            if reuse in ("", "y", "yes"):
+                api_key = embedding.api_key
+        if not api_key:
+            while True:
+                api_key = getpass(f"API key for {provider} LLM (input hidden): ").strip()
+                if api_key:
+                    break
+                print("API key is required for cloud LLM providers.")
+
+    if provider == "ollama":
+        from moorcheh.ollama_setup import prepare_ollama_at_configure
+
+        prepare_ollama_at_configure(model)
+
+    return LlmConfig(
+        provider=provider,
+        model=model,
+        api_key=api_key,
+        base_url=default_base_url(provider),
+    )
 
 
 def configure_embedding_interactive(*, force: bool = False) -> EmbeddingConfig:
-    existing = None if force else load_embedding_config()
+    saved = load_embedding_config()
+    existing = None if force else saved
+
+    _print_existing_data_warning()
+
     if existing and not force:
         reuse = input(
             f"Use saved embedding config ({existing.provider}, model={existing.model})? [Y/n]: "
@@ -208,10 +497,20 @@ def configure_embedding_interactive(*, force: bool = False) -> EmbeddingConfig:
 
                 prepare_ollama_at_configure(resolved.model)
             return resolved
+        print(
+            "\nYou chose to change embedding settings. "
+            "You will be asked to confirm again before anything is saved."
+        )
 
     print("Configure text embeddings for Moorcheh (used for text namespaces and text search).")
-    provider = _prompt_choice("Embedding provider", PROVIDER_CHOICES, "openai")
+    provider = _prompt_choice("Embedding provider", PROVIDER_CHOICES, DEFAULT_PROVIDER)
     model = _prompt_model_for_provider(provider)
+
+    _confirm_embedding_change_if_data_exists(
+        existing=saved,
+        new_provider=provider,
+        new_model=model,
+    )
 
     api_key: str | None = None
     if provider != "ollama":
@@ -232,9 +531,13 @@ def configure_embedding_interactive(*, force: bool = False) -> EmbeddingConfig:
         api_key=api_key,
         base_url=default_base_url(provider),
     )
-    saved = save_embedding_config(config)
-    print(f"Saved to {saved}")
+    llm = _configure_llm_interactive(config)
+    save_runtime_config(config, llm)
+    print(f"Saved to {config_file_path()}")
     print("API base URL is stored in config (defaults from this release). Edit base_url there to override.")
+    print(
+        "\nRestart the server to apply: moorcheh down  then  moorcheh up"
+    )
     return config
 
 
@@ -249,7 +552,7 @@ def ensure_embedding_config(
         resolved_provider = (provider or "ollama").strip().lower()
         if resolved_provider not in PROVIDER_CHOICES:
             raise ValueError(f"unsupported provider '{resolved_provider}'")
-        resolved_model = (model or PROVIDER_MODELS[resolved_provider][0][0]).strip()
+        resolved_model = (model or recommended_embedding_model(resolved_provider)).strip()
         saved = load_embedding_config()
         resolved_api_key = api_key.strip() if api_key else None
         if not resolved_api_key and saved and saved.provider == resolved_provider:
@@ -269,7 +572,8 @@ def ensure_embedding_config(
             api_key=resolved_api_key,
             base_url=resolved_base_url,
         )
-        save_embedding_config(config)
+        llm = load_llm_config(embedding=config) or LlmConfig.default_for_embedding(config)
+        save_runtime_config(config, llm)
         return config
 
     saved = load_embedding_config()

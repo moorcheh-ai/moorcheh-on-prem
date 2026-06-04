@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from moorcheh import docker_runtime
-from moorcheh.user_config import EmbeddingConfig
+from moorcheh.user_config import EmbeddingConfig, LlmConfig
 
 
 def test_compose_file_path_is_packaged() -> None:
@@ -62,16 +62,23 @@ def test_up_openai_starts_server_only(tmp_path: Path, monkeypatch: pytest.Monkey
         api_key="sk-test",
         base_url="https://api.openai.com/v1",
     )
+    llm = LlmConfig(
+        provider="openai",
+        model="gpt-4o-mini",
+        api_key="sk-test",
+        base_url="https://api.openai.com/v1",
+    )
     compose_result = MagicMock(stdout="", stderr="", returncode=0)
 
     with (
         patch("moorcheh.docker_runtime.ensure_embedding_config", return_value=embedding),
+        patch("moorcheh.docker_runtime.load_llm_config", return_value=llm),
         patch("moorcheh.docker_runtime.remove_stale_compose_containers") as remove_stale,
         patch("moorcheh.docker_runtime.ensure_data_dir", return_value=tmp_path),
         patch("moorcheh.docker_runtime.run_compose", return_value=compose_result) as run_compose,
         patch("moorcheh.docker_runtime.ensure_ollama_model") as ensure_model,
     ):
-        result, bundled, data_dir, returned = docker_runtime.up(
+        result, bundled, data_dir, returned, returned_llm = docker_runtime.up(
             "moorcheh/server:latest",
             "ollama/ollama:latest",
             8080,
@@ -83,6 +90,7 @@ def test_up_openai_starts_server_only(tmp_path: Path, monkeypatch: pytest.Monkey
     assert bundled is False
     assert data_dir == tmp_path
     assert returned.provider == "openai"
+    assert returned_llm.model == "gpt-4o-mini"
     remove_stale.assert_called_once_with(include_ollama=False)
     ensure_model.assert_not_called()
     run_compose.assert_called_once()
@@ -90,21 +98,25 @@ def test_up_openai_starts_server_only(tmp_path: Path, monkeypatch: pytest.Monkey
     env = run_compose.call_args[1]["env"]
     assert env["EMBEDDING_PROVIDER"] == "openai"
     assert env["EMBEDDING_API_KEY"] == "sk-test"
+    assert env["LLM_PROVIDER"] == "openai"
+    assert env["LLM_MODEL"] == "gpt-4o-mini"
 
 
 def test_up_ollama_host_skips_bundled_container(tmp_path: Path) -> None:
     embedding = EmbeddingConfig(provider="ollama", model="nomic-embed-text")
+    llm = LlmConfig(provider="ollama", model="llama3.2")
     compose_result = MagicMock(stdout="", stderr="", returncode=0)
 
     with (
         patch("moorcheh.docker_runtime.ensure_embedding_config", return_value=embedding),
+        patch("moorcheh.docker_runtime.load_llm_config", return_value=llm),
         patch("moorcheh.docker_runtime.should_use_bundled_ollama", return_value=False),
         patch("moorcheh.docker_runtime.remove_stale_compose_containers"),
         patch("moorcheh.docker_runtime.ensure_data_dir", return_value=tmp_path),
         patch("moorcheh.docker_runtime.ensure_ollama_model"),
         patch("moorcheh.docker_runtime.run_compose", return_value=compose_result) as run_compose,
     ):
-        _, bundled, _, _ = docker_runtime.up(
+        _, bundled, _, _, _ = docker_runtime.up(
             "moorcheh/server:latest",
             "ollama/ollama:latest",
             8080,

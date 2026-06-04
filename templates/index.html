@@ -15,6 +15,16 @@
     .muted { color: #666; font-size: 12px; }
     textarea { width: 100%; min-height: 120px; font-family: Consolas, monospace; font-size: 12px; margin-top: 8px; }
     pre { background: #111; color: #f4f4f4; padding: 10px; border-radius: 6px; max-height: 220px; overflow: auto; font-size: 12px; }
+    .answer-panel { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    .answer-panel h3 { margin: 0 0 12px; }
+    .form-row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 10px; align-items: center; }
+    .form-row label { font-size: 13px; min-width: 90px; }
+    .form-row input, .form-row select, .form-row textarea { font-size: 13px; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; }
+    .form-row input[type="text"], .form-row select { min-width: 180px; }
+    .form-row textarea { flex: 1; min-width: 280px; min-height: 64px; font-family: inherit; }
+    .answer-output { margin-top: 12px; }
+    .answer-text { background: #f0f4ff; border: 1px solid #c8d4f0; border-radius: 6px; padding: 12px; white-space: pre-wrap; font-size: 14px; line-height: 1.5; margin-bottom: 8px; }
+    .badge { display: inline-block; background: #eef; color: #334; padding: 2px 8px; border-radius: 999px; font-size: 11px; margin-left: 8px; }
   </style>
 </head>
 <body>
@@ -29,9 +39,63 @@
     <button class="btn primary" id="runAllBtn">Run All Tests</button>
   </div>
 
+  <div class="answer-panel">
+    <h3>AI Answer <span class="badge">POST /answer</span></h3>
+    <div class="muted" id="serverLlmInfo">Loading server LLM from /health...</div>
+
+    <div class="form-row">
+      <label for="answerMode">Mode</label>
+      <select id="answerMode">
+        <option value="rag" selected>RAG (with namespace)</option>
+        <option value="direct">Direct AI (no namespace)</option>
+      </select>
+      <label for="answerNamespace">Namespace</label>
+      <input id="answerNamespace" type="text" value="docs_html" placeholder="e.g. docs_html" />
+    </div>
+
+    <div class="form-row">
+      <label for="llmProvider">LLM provider</label>
+      <select id="llmProvider"></select>
+      <label for="aiModel">Model</label>
+      <select id="aiModel"></select>
+      <label for="answerTopK">top_k</label>
+      <input id="answerTopK" type="number" value="5" min="1" max="100" style="width:70px" />
+      <label for="answerTemp">temp</label>
+      <input id="answerTemp" type="number" value="0.7" min="0" max="2" step="0.1" style="width:70px" />
+    </div>
+
+    <div class="form-row">
+      <label for="answerQuery">Query</label>
+      <textarea id="answerQuery" placeholder="Ask a question...">What is Moorcheh On-Prem?</textarea>
+    </div>
+
+    <div class="form-row">
+      <label for="headerPrompt">Header</label>
+      <input id="headerPrompt" type="text" placeholder="Optional system instruction" style="flex:1" />
+    </div>
+    <div class="form-row">
+      <label for="footerPrompt">Footer</label>
+      <input id="footerPrompt" type="text" placeholder="Default: Provide a clear and concise answer." style="flex:1" />
+    </div>
+
+    <div class="form-row">
+      <button class="btn primary" id="runAnswerBtn">Generate Answer</button>
+      <span class="muted" id="answerStatus"></span>
+    </div>
+
+    <div class="answer-output">
+      <div class="answer-text" id="answerText">Answer will appear here.</div>
+      <pre id="answerRaw">Raw JSON response will appear here.</pre>
+    </div>
+  </div>
+
   <div class="grid" id="tests"></div>
 
   <script>
+    const LLM_MODELS = {{ llm_models_json | safe }};
+    const SAVED_LLM_PROVIDER = {{ saved_llm_provider | tojson }};
+    const SAVED_LLM_MODEL = {{ saved_llm_model | tojson }};
+
     const state = {
       docsUploadJobId: null,
       vectorsUploadJobId: null,
@@ -170,6 +234,29 @@
         run: async (p) => apiCall("POST", "/search", p)
       },
       {
+        id: "t11a",
+        name: "11a) Answer RAG",
+        path: "POST /answer",
+        payload: {
+          namespace: "docs_html",
+          query: "What does the Moorcheh HTML test document say?",
+          top_k: 5,
+          temperature: 0.3
+        },
+        run: async (p) => apiCall("POST", "/answer", p)
+      },
+      {
+        id: "t11b",
+        name: "11b) Answer Direct AI",
+        path: "POST /answer",
+        payload: {
+          namespace: "",
+          query: "Explain semantic search in one sentence.",
+          temperature: 0.5
+        },
+        run: async (p) => apiCall("POST", "/answer", p)
+      },
+      {
         id: "t12",
         name: "12) Search Vector (5D)",
         path: "POST /search",
@@ -281,7 +368,126 @@
     }
 
     document.getElementById("runAllBtn").addEventListener("click", runAll);
+
+    function populateModelSelect(provider, selectedModel) {
+      const modelSelect = document.getElementById("aiModel");
+      const models = LLM_MODELS[provider] || [];
+      modelSelect.innerHTML = models.map((m) =>
+        `<option value="${m}"${m === selectedModel ? " selected" : ""}>${m}</option>`
+      ).join("");
+      if (!models.includes(selectedModel) && models.length) {
+        modelSelect.value = models[0];
+      }
+    }
+
+    function initAnswerPanel() {
+      const providerSelect = document.getElementById("llmProvider");
+      providerSelect.innerHTML = Object.keys(LLM_MODELS).map((p) =>
+        `<option value="${p}"${p === SAVED_LLM_PROVIDER ? " selected" : ""}>${p}</option>`
+      ).join("");
+
+      const storedProvider = localStorage.getItem("moorcheh_ui_llm_provider") || SAVED_LLM_PROVIDER;
+      const storedModel = localStorage.getItem("moorcheh_ui_llm_model") || SAVED_LLM_MODEL;
+      if (LLM_MODELS[storedProvider]) {
+        providerSelect.value = storedProvider;
+      }
+      populateModelSelect(providerSelect.value, storedModel);
+
+      providerSelect.addEventListener("change", () => {
+        populateModelSelect(providerSelect.value, null);
+      });
+
+      document.getElementById("answerMode").addEventListener("change", (e) => {
+        const ns = document.getElementById("answerNamespace");
+        ns.disabled = e.target.value === "direct";
+        if (e.target.value === "direct") ns.value = "";
+        else if (!ns.value) ns.value = "docs_html";
+      });
+
+      document.getElementById("runAnswerBtn").addEventListener("click", runAnswer);
+    }
+
+    async function refreshServerLlmInfo() {
+      const el = document.getElementById("serverLlmInfo");
+      const result = await apiCall("GET", "/health");
+      if (!result.ok) {
+        el.textContent = "Could not reach /health — is the server running?";
+        return;
+      }
+      const d = result.data || {};
+      const ep = d.embedding_provider || "?";
+      const em = d.model || "?";
+      const lp = d.llm_provider || "(not in this server build)";
+      const lm = d.llm_model || "?";
+      el.textContent = `Server embedding: ${ep} / ${em}  |  Server LLM: ${lp} / ${lm}`;
+      if (d.llm_provider && LLM_MODELS[d.llm_provider]) {
+        document.getElementById("llmProvider").value = d.llm_provider;
+        document.getElementById("llmProvider").disabled = true;
+        populateModelSelect(d.llm_provider, d.llm_model || SAVED_LLM_MODEL);
+      } else {
+        document.getElementById("llmProvider").disabled = false;
+      }
+    }
+
+    async function runAnswer() {
+      const status = document.getElementById("answerStatus");
+      const answerText = document.getElementById("answerText");
+      const answerRaw = document.getElementById("answerRaw");
+      const mode = document.getElementById("answerMode").value;
+      const provider = document.getElementById("llmProvider").value;
+      const aiModel = document.getElementById("aiModel").value;
+
+      localStorage.setItem("moorcheh_ui_llm_provider", provider);
+      localStorage.setItem("moorcheh_ui_llm_model", aiModel);
+
+      const payload = {
+        query: document.getElementById("answerQuery").value.trim(),
+        namespace: mode === "direct" ? "" : document.getElementById("answerNamespace").value.trim(),
+        temperature: parseFloat(document.getElementById("answerTemp").value) || 0.7,
+        ai_model: aiModel
+      };
+
+      if (mode === "rag") {
+        payload.top_k = parseInt(document.getElementById("answerTopK").value, 10) || 5;
+      }
+
+      const header = document.getElementById("headerPrompt").value.trim();
+      const footer = document.getElementById("footerPrompt").value.trim();
+      if (header) payload.header_prompt = header;
+      if (footer) payload.footer_prompt = footer;
+
+      if (!payload.query) {
+        status.textContent = "Query is required.";
+        return;
+      }
+      if (mode === "rag" && !payload.namespace) {
+        status.textContent = "Namespace is required for RAG mode.";
+        return;
+      }
+
+      status.textContent = "Generating (may take up to 3 min)...";
+      answerText.textContent = "Waiting for LLM response...";
+      answerRaw.textContent = "";
+
+      try {
+        const result = await apiCall("POST", "/answer", payload);
+        answerRaw.textContent = pretty(result);
+        if (result.ok && result.data) {
+          answerText.textContent = result.data.answer || "(empty answer)";
+          status.textContent = `Done — model: ${result.data.model || aiModel}, context: ${result.data.context_count ?? "?"}`;
+        } else {
+          answerText.textContent = result.data?.message || "Request failed.";
+          status.textContent = `Error HTTP ${result.status}`;
+        }
+      } catch (e) {
+        answerText.textContent = `Error: ${e}`;
+        status.textContent = "Failed";
+      }
+    }
+
     renderTests();
+    initAnswerPanel();
+    refreshServerLlmInfo();
   </script>
 </body>
 </html>
