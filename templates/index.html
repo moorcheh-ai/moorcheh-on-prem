@@ -25,6 +25,10 @@
     .answer-output { margin-top: 12px; }
     .answer-text { background: #f0f4ff; border: 1px solid #c8d4f0; border-radius: 6px; padding: 12px; white-space: pre-wrap; font-size: 14px; line-height: 1.5; margin-bottom: 8px; }
     .badge { display: inline-block; background: #eef; color: #334; padding: 2px 8px; border-radius: 999px; font-size: 11px; margin-left: 8px; }
+    .file-panel { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    .file-panel h3 { margin: 0 0 12px; }
+    .file-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .hint { font-size: 12px; color: #666; margin-top: 6px; }
   </style>
 </head>
 <body>
@@ -89,6 +93,40 @@
     </div>
   </div>
 
+  <div class="file-panel">
+    <h3>File Upload <span class="badge">POST /namespaces/{ns}/files</span></h3>
+    <div class="hint">
+      Upload dir on host: <code>{{ upload_dir }}</code> (mounted as <code>/uploads</code> in the server container).
+      Pick a file here — Flask stages it into the upload dir, then the API uploads by container path.
+    </div>
+
+    <div class="form-row">
+      <label for="fileNamespace">Namespace</label>
+      <input id="fileNamespace" type="text" value="my-documents" />
+      <label for="fileInput">File</label>
+      <input id="fileInput" type="file" accept=".pdf,.docx,.xlsx,.pptx,.txt,.csv,.md,.json" />
+      <label><input id="fileForceReindex" type="checkbox" /> force_reindex</label>
+    </div>
+
+    <div class="form-row">
+      <label for="fileMetadata">Metadata JSON</label>
+      <textarea id="fileMetadata" style="min-height:48px" placeholder='{"team":"ai"}'></textarea>
+    </div>
+
+    <div class="file-actions">
+      <button class="btn primary" id="fileIngestBtn">Stage + Upload</button>
+      <button class="btn" id="fileJobStatusBtn">Poll File Job</button>
+      <button class="btn" id="fileListBtn">List Files</button>
+      <button class="btn" id="fileDeleteBtn">Delete Index</button>
+      <span class="muted" id="fileStatus"></span>
+    </div>
+
+    <div class="answer-output">
+      <div class="answer-text" id="fileSummary">No file upload run yet.</div>
+      <pre id="fileRaw">Raw responses appear here.</pre>
+    </div>
+  </div>
+
   <div class="grid" id="tests"></div>
 
   <script>
@@ -101,6 +139,9 @@
       vectorsUploadJobId: null,
       docsNamespaceDeleteJobId: null,
       vectorNamespaceDeleteJobId: null,
+      fileIngestJobId: null,
+      lastContainerPath: null,
+      lastFileId: null,
       createdDocId: "doc_html_001",
       createdVecIds: ["vec_html_001", "vec_html_002", "vec_html_003", "vec_html_004", "vec_html_005"]
     };
@@ -368,6 +409,151 @@
     }
 
     document.getElementById("runAllBtn").addEventListener("click", runAll);
+
+    async function stageBrowserFile(file) {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/files/stage", { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.message || `stage failed HTTP ${res.status}`);
+      }
+      return data;
+    }
+
+    function parseOptionalMetadata(raw) {
+      const trimmed = (raw || "").trim();
+      if (!trimmed) return {};
+      const parsed = JSON.parse(trimmed);
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        throw new Error("metadata must be a JSON object");
+      }
+      return parsed;
+    }
+
+    async function runFileIngest() {
+      const status = document.getElementById("fileStatus");
+      const summary = document.getElementById("fileSummary");
+      const raw = document.getElementById("fileRaw");
+      const namespace = document.getElementById("fileNamespace").value.trim();
+      const fileInput = document.getElementById("fileInput");
+
+      if (!namespace) {
+        status.textContent = "Namespace is required.";
+        return;
+      }
+      if (!fileInput.files || !fileInput.files.length) {
+        status.textContent = "Choose a file first.";
+        return;
+      }
+
+      status.textContent = "Staging file to upload dir...";
+      summary.textContent = "Working...";
+      raw.textContent = "";
+
+      try {
+        const metadata = parseOptionalMetadata(document.getElementById("fileMetadata").value);
+        const staged = await stageBrowserFile(fileInput.files[0]);
+        state.lastContainerPath = staged.container_path;
+
+        const fileEntry = {
+          path: staged.container_path,
+          ...metadata
+        };
+        if (document.getElementById("fileForceReindex").checked) {
+          fileEntry.force_reindex = true;
+        }
+
+        status.textContent = "Starting upload job...";
+        const ingest = await apiCall("POST", `/namespaces/${namespace}/files`, { files: [fileEntry] });
+        raw.textContent = pretty({ staged, ingest });
+
+        if (ingest.ok && ingest.data) {
+          state.fileIngestJobId = ingest.data.job_id || null;
+          const skipped = ingest.data.skipped || [];
+          if (skipped.length) {
+            summary.textContent = `Skipped (already indexed): ${staged.container_path}`;
+          } else {
+            summary.textContent = `Upload started — job_id: ${state.fileIngestJobId || "(none)"}`;
+          }
+          status.textContent = ingest.data.message || "Upload request sent.";
+        } else {
+          summary.textContent = ingest.data?.message || "Upload failed.";
+          status.textContent = `Error HTTP ${ingest.status}`;
+        }
+      } catch (e) {
+        summary.textContent = `Error: ${e}`;
+        status.textContent = "Failed";
+      }
+    }
+
+    async function pollFileJob() {
+      const status = document.getElementById("fileStatus");
+      const raw = document.getElementById("fileRaw");
+      const namespace = document.getElementById("fileNamespace").value.trim();
+      if (!state.fileIngestJobId) {
+        status.textContent = "No file job id yet — run Stage + Upload first.";
+        return;
+      }
+      status.textContent = "Polling file job...";
+      const result = await apiCall("GET", `/namespaces/${namespace}/file-jobs/${state.fileIngestJobId}`);
+      raw.textContent = pretty(result);
+      if (result.ok && result.data) {
+        state.lastFileId = result.data.file_id || state.lastFileId;
+        status.textContent = `Job ${result.data.status} — chunks ${result.data.chunks_processed || 0}/${result.data.chunks_total || 0}`;
+        document.getElementById("fileSummary").textContent = pretty({
+          job_id: result.data.job_id,
+          status: result.data.status,
+          file_id: result.data.file_id,
+          absolute_path: result.data.absolute_path,
+          chunks_processed: result.data.chunks_processed,
+          summaries_created: result.data.summaries_created,
+          last_error: result.data.last_error
+        });
+      } else {
+        status.textContent = `Poll failed HTTP ${result.status}`;
+      }
+    }
+
+    async function listFiles() {
+      const namespace = document.getElementById("fileNamespace").value.trim();
+      document.getElementById("fileStatus").textContent = "Listing files...";
+      const result = await apiCall("GET", `/namespaces/${namespace}/files`);
+      document.getElementById("fileRaw").textContent = pretty(result);
+      if (result.ok && result.data?.files?.length) {
+        const first = result.data.files[0];
+        state.lastFileId = first.file_id;
+        state.lastContainerPath = first.absolute_path;
+        document.getElementById("fileSummary").textContent = `${result.data.count} file(s). First: ${first.filename} (${first.status})`;
+      } else if (result.ok) {
+        document.getElementById("fileSummary").textContent = "No indexed files in this namespace.";
+      }
+      document.getElementById("fileStatus").textContent = result.ok ? "List complete." : `List failed HTTP ${result.status}`;
+    }
+
+    async function deleteFileIndex() {
+      const namespace = document.getElementById("fileNamespace").value.trim();
+      const payload = {};
+      if (state.lastContainerPath) payload.path = state.lastContainerPath;
+      else if (state.lastFileId) payload.file_id = state.lastFileId;
+      else {
+        document.getElementById("fileStatus").textContent = "Upload or list a file first (need path or file_id).";
+        return;
+      }
+      document.getElementById("fileStatus").textContent = "Deleting index (disk file kept)...";
+      const result = await apiCall("POST", `/namespaces/${namespace}/files/delete`, payload);
+      document.getElementById("fileRaw").textContent = pretty(result);
+      if (result.ok && result.data?.job_id) {
+        state.fileIngestJobId = result.data.job_id;
+        document.getElementById("fileSummary").textContent = `Delete job started: ${result.data.job_id}`;
+      }
+      document.getElementById("fileStatus").textContent = result.ok ? "Delete job started." : `Delete failed HTTP ${result.status}`;
+    }
+
+    document.getElementById("fileIngestBtn").addEventListener("click", runFileIngest);
+    document.getElementById("fileJobStatusBtn").addEventListener("click", pollFileJob);
+    document.getElementById("fileListBtn").addEventListener("click", listFiles);
+    document.getElementById("fileDeleteBtn").addEventListener("click", deleteFileIndex);
 
     function populateModelSelect(provider, selectedModel) {
       const modelSelect = document.getElementById("aiModel");

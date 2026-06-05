@@ -22,6 +22,7 @@ BUNDLED_OLLAMA_URL = "http://ollama:11434"
 COMPOSE_CONTAINER_NAMES = ("moorcheh-ollama", "moorcheh-onprem-server")
 
 MOORCHEH_DATA_DIR_ENV = "MOORCHEH_DATA_DIR"
+MOORCHEH_UPLOAD_DIR_ENV = "MOORCHEH_UPLOAD_DIR"
 
 
 def default_data_dir() -> Path:
@@ -34,6 +35,34 @@ def ensure_data_dir() -> Path:
     path = default_data_dir().resolve()
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def default_upload_dir() -> Path:
+    """Per-user upload mount source: ~/.moorcheh/uploads."""
+    return Path.home() / ".moorcheh" / "uploads"
+
+
+def ensure_upload_dir() -> Path:
+    path = default_upload_dir().resolve()
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def host_path_to_container_upload_path(host_path: Path, upload_dir: Path | None = None) -> str:
+    """Map a host file under the upload dir to the in-container /uploads path."""
+    root = (upload_dir or ensure_upload_dir()).resolve()
+    resolved = host_path.resolve()
+    if resolved == root:
+        raise ValueError(f"Path must be a file under {root}")
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(
+            f"File must be inside the Moorcheh upload directory ({root}). "
+            f"Copy or move the file there, then retry."
+        ) from exc
+    relative = resolved.relative_to(root).as_posix()
+    return f"/uploads/{relative}"
 
 
 def docker_bind_path(path: Path) -> str:
@@ -160,11 +189,13 @@ def up(
     remove_stale_compose_containers(include_ollama=use_bundled)
 
     resolved_data_dir = ensure_data_dir()
+    resolved_upload_dir = ensure_upload_dir()
     base_env = {
         "MOORCHEH_SERVER_IMAGE": server_image,
         "OLLAMA_IMAGE": ollama_image,
         "SERVER_PORT": str(server_port),
         MOORCHEH_DATA_DIR_ENV: docker_bind_path(resolved_data_dir),
+        MOORCHEH_UPLOAD_DIR_ENV: docker_bind_path(resolved_upload_dir),
     }
 
     if embedding.provider == "ollama" or llm.provider == "ollama":
@@ -247,7 +278,10 @@ def down(*, include_ollama: bool | None = None) -> subprocess.CompletedProcess[s
     None = if saved config uses a cloud provider, stop server only; otherwise stop
     the full bundled-ollama profile (server + moorcheh-ollama if running).
     """
-    env = {MOORCHEH_DATA_DIR_ENV: docker_bind_path(ensure_data_dir())}
+    env = {
+        MOORCHEH_DATA_DIR_ENV: docker_bind_path(ensure_data_dir()),
+        MOORCHEH_UPLOAD_DIR_ENV: docker_bind_path(ensure_upload_dir()),
+    }
     if include_ollama is False:
         return run_compose(["stop", "server"], env=env)
     if include_ollama is None:

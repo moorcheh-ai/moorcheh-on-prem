@@ -6,7 +6,9 @@ from typing import Any
 
 import requests
 from flask import Flask, jsonify, render_template, request
+from werkzeug.utils import secure_filename
 
+from moorcheh.docker_runtime import ensure_upload_dir, host_path_to_container_upload_path
 from moorcheh.user_config import LLM_PROVIDER_MODELS, load_embedding_config, load_llm_config
 
 
@@ -15,6 +17,7 @@ FLASK_HOST = os.getenv("FLASK_HOST", "0.0.0.0")
 FLASK_PORT = int(os.getenv("FLASK_PORT", "5000"))
 DEFAULT_PROXY_TIMEOUT = int(os.getenv("MOORCHEH_PROXY_TIMEOUT", "30"))
 ANSWER_PROXY_TIMEOUT = int(os.getenv("MOORCHEH_ANSWER_TIMEOUT", "180"))
+FILE_PROXY_TIMEOUT = int(os.getenv("MOORCHEH_FILE_TIMEOUT", "600"))
 
 app = Flask(__name__)
 
@@ -27,13 +30,41 @@ def _llm_models_for_template() -> dict[str, list[str]]:
 def index():
     embedding = load_embedding_config()
     llm = load_llm_config(embedding=embedding)
+    upload_dir = ensure_upload_dir()
     return render_template(
         "index.html",
         default_server_url=SERVER_BASE_URL,
+        upload_dir=str(upload_dir),
         llm_models_json=json.dumps(_llm_models_for_template()),
         saved_llm_provider=llm.provider if llm else "ollama",
         saved_llm_model=llm.model if llm else "qwen2.5",
     )
+
+
+@app.route("/files/stage", methods=["POST"])
+def stage_file():
+    """Save an uploaded browser file into ~/.moorcheh/uploads for Docker bind mount."""
+    uploaded = request.files.get("file")
+    if uploaded is None or not uploaded.filename:
+        return jsonify({"ok": False, "message": "file is required"}), 400
+
+    upload_root = ensure_upload_dir()
+    safe_name = secure_filename(uploaded.filename)
+    if not safe_name:
+        return jsonify({"ok": False, "message": "invalid filename"}), 400
+
+    destination = upload_root / safe_name
+    uploaded.save(destination)
+    container_path = host_path_to_container_upload_path(destination, upload_root)
+    return jsonify(
+        {
+            "ok": True,
+            "host_path": str(destination.resolve()),
+            "container_path": container_path,
+            "filename": safe_name,
+            "upload_dir": str(upload_root.resolve()),
+        }
+    ), 200
 
 
 @app.route("/proxy", methods=["POST"])
@@ -50,7 +81,12 @@ def proxy():
         return jsonify({"ok": False, "status": 400, "data": {"message": "path must start with /"}}), 400
 
     target_url = f"http://localhost:{port}{path}"
-    timeout = ANSWER_PROXY_TIMEOUT if path == "/answer" else DEFAULT_PROXY_TIMEOUT
+    if path == "/answer":
+        timeout = ANSWER_PROXY_TIMEOUT
+    elif "/files" in path or "/file-jobs" in path:
+        timeout = FILE_PROXY_TIMEOUT
+    else:
+        timeout = DEFAULT_PROXY_TIMEOUT
     try:
         if method == "GET":
             res = requests.get(target_url, timeout=timeout)

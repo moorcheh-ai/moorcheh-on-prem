@@ -34,8 +34,12 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434}
       DATA_FILE: /app/data/moorcheh_data_store.json
       NAMESPACE_REGISTRY_FILE: /app/data/namespace_registry.json
+      FILE_REGISTRY_FILE: /app/data/file_registry.json
+      ALLOWED_UPLOAD_PATHS: /uploads
+      CHUNKER_URL: http://127.0.0.1:8090
     volumes:
       - ${MOORCHEH_DATA_DIR}:/app/data
+      - ${MOORCHEH_UPLOAD_DIR}:/uploads:ro
 
 volumes:
   ollama_data:

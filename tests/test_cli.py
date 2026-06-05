@@ -44,6 +44,13 @@ ALL_COMMANDS = {
     "upload-documents",
     "upload-vectors",
     "upload-job-status",
+    "upload-file",
+    "upload-files",
+    "list-files",
+    "file-get",
+    "delete-file",
+    "file-job-status",
+    "fetch-text-data",
     "items-get",
     "items-delete",
     "search",
@@ -225,7 +232,6 @@ def test_cmd_search_text(search: MagicMock) -> None:
             "query": "hello",
             "top_k": 10,
             "threshold": 0.5,
-            "metadata": {"team": "ai"},
             "namespaces": ["docs", "products"],
         }
     )
@@ -248,7 +254,6 @@ def test_cmd_search_vector(search: MagicMock) -> None:
             "query": [0.1, 0.2],
             "top_k": 5,
             "threshold": 0.0,
-            "metadata": {},
             "namespaces": ["vecns"],
         }
     )
