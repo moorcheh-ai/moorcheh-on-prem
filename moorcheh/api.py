@@ -2,112 +2,131 @@ from __future__ import annotations
 
 from typing import Any
 
-import requests
+from moorcheh.client import MoorchehClient
+from moorcheh.errors import MoorchehApiError
 
-
-class MoorchehApiError(Exception):
-    """HTTP error from the Moorcheh API (includes parsed JSON body when available)."""
-
-    def __init__(
-        self,
-        message: str,
-        status_code: int,
-        body: dict[str, Any] | None = None,
-    ) -> None:
-        super().__init__(message)
-        self.status_code = status_code
-        self.body = body
-
-    @property
-    def is_item_limit_exceeded(self) -> bool:
-        return self.status_code == 409 and bool(self.body)
+__all__ = ["MoorchehApiClient", "MoorchehApiError"]
 
 
 class MoorchehApiClient:
+    """
+    Legacy flat API client. Prefer :class:`MoorchehClient` for resource-style calls.
+
+    All methods delegate to :class:`MoorchehClient` and remain for backward compatibility.
+    """
+
     def __init__(self, base_url: str, timeout: int = 30) -> None:
-        self.base_url = base_url.rstrip("/")
-        self.timeout = timeout
+        self._client = MoorchehClient(base_url, timeout)
 
-    def _raise_for_status(self, response: requests.Response) -> None:
-        if response.ok:
-            return
-        body: dict[str, Any] | None = None
-        try:
-            parsed = response.json()
-            if isinstance(parsed, dict):
-                body = parsed
-        except requests.JSONDecodeError:
-            body = None
-        message = (
-            str(body.get("message"))
-            if body and body.get("message") is not None
-            else response.text or response.reason
-        )
-        raise MoorchehApiError(message, response.status_code, body)
+    @property
+    def base_url(self) -> str:
+        return self._client.base_url
 
-    def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
-        response = requests.post(
-            f"{self.base_url}{path}",
-            json=payload,
-            timeout=self.timeout,
-        )
-        self._raise_for_status(response)
-        return response.json()
+    @property
+    def timeout(self) -> int:
+        return self._client.timeout
 
-    def _get(self, path: str) -> dict[str, Any]:
-        response = requests.get(f"{self.base_url}{path}", timeout=self.timeout)
-        self._raise_for_status(response)
-        return response.json()
+    def _raise_for_status(self, response: Any) -> None:
+        self._client._http._raise_for_status(response)
 
     def health(self) -> dict[str, Any]:
-        """
-        GET /health — includes global item quota:
-        items, max_items, remaining, model, status.
-        """
-        return self._get("/health")
+        return self._client.health()
 
     def create_namespace(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return self._post("/namespaces", payload)
+        return self._client.namespaces.create(
+            payload["namespace_name"],
+            type=payload["type"],
+            vector_dimension=payload.get("vector_dimension"),
+        )
 
     def list_namespaces(self) -> dict[str, Any]:
-        return self._get("/namespaces")
+        return self._client.namespaces.list()
 
     def delete_namespace(self, namespace_name: str) -> dict[str, Any]:
-        response = requests.delete(
-            f"{self.base_url}/namespaces/{namespace_name}",
-            timeout=self.timeout,
-        )
-        self._raise_for_status(response)
-        return response.json()
+        return self._client.namespaces.delete(namespace_name)
 
     def delete_namespace_job_status(self, namespace_name: str, job_id: str) -> dict[str, Any]:
-        return self._get(f"/namespaces/{namespace_name}/delete-jobs/{job_id}")
+        return self._client.namespaces.delete_job_status(namespace_name, job_id)
 
     def upload_namespace_documents(self, namespace_name: str, payload: dict[str, Any]) -> dict[str, Any]:
-        """POST documents (async job). May raise MoorchehApiError with status 409 if global item cap exceeded."""
-        return self._post(f"/namespaces/{namespace_name}/documents", payload)
+        return self._client.documents.upload(
+            namespace_name,
+            documents=payload["documents"],
+        )
 
     def upload_namespace_vectors(self, namespace_name: str, payload: dict[str, Any]) -> dict[str, Any]:
-        """POST vectors (async job). May raise MoorchehApiError with status 409 if global item cap exceeded."""
-        return self._post(f"/namespaces/{namespace_name}/vectors", payload)
+        return self._client.vectors.upload(
+            namespace_name,
+            vectors=payload["vectors"],
+        )
 
     def get_namespace_items(self, namespace_name: str, payload: dict[str, Any]) -> dict[str, Any]:
-        return self._post(f"/namespaces/{namespace_name}/items/get", payload)
+        return self._client.documents.get(namespace_name, ids=payload["ids"])
+
+    def fetch_text_data(
+        self,
+        namespace_name: str,
+        *,
+        limit: int | None = None,
+        next_token: str | None = None,
+    ) -> dict[str, Any]:
+        return self._client.documents.fetch_text_data(
+            namespace_name,
+            limit=limit,
+            next_token=next_token,
+        )
 
     def delete_namespace_items(self, namespace_name: str, payload: dict[str, Any]) -> dict[str, Any]:
-        """Delete by item id within namespace (ids are unique per namespace, not globally)."""
-        return self._post(f"/namespaces/{namespace_name}/items/delete", payload)
+        return self._client.documents.delete(namespace_name, ids=payload["ids"])
 
     def upload_job_status(self, namespace_name: str, job_id: str) -> dict[str, Any]:
-        """Poll document or vector upload job status."""
-        return self._get(f"/namespaces/{namespace_name}/upload-jobs/{job_id}")
+        return self._client.documents.upload_job_status(namespace_name, job_id)
+
+    def upload_namespace_files(self, namespace_name: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._client.files.upload(namespace_name, files=payload["files"])
+
+    def list_namespace_files(self, namespace_name: str) -> dict[str, Any]:
+        return self._client.files.list(namespace_name)
+
+    def get_namespace_file(self, namespace_name: str, file_id: str) -> dict[str, Any]:
+        return self._client.files.get(namespace_name, file_id)
+
+    def delete_namespace_files(self, namespace_name: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._client.files.delete(
+            namespace_name,
+            file_id=payload.get("file_id"),
+            path=payload.get("path"),
+        )
+
+    def file_job_status(self, namespace_name: str, job_id: str) -> dict[str, Any]:
+        return self._client.files.job_status(namespace_name, job_id)
 
     def upload_namespace_documents_job_status(self, namespace_name: str, job_id: str) -> dict[str, Any]:
         return self.upload_job_status(namespace_name, job_id)
 
     def search(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return self._post("/search", payload)
+        body = dict(payload)
+        body.pop("metadata", None)
+        return self._client.similarity_search.query(
+            namespaces=body.pop("namespaces"),
+            query=body.pop("query"),
+            top_k=body.pop("top_k", 5),
+            threshold=body.pop("threshold", 0.0),
+            kiosk_mode=body.pop("kiosk_mode", False),
+        )
 
     def answer(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """POST /answer — RAG answer (namespace set) or direct LLM (empty namespace)."""
-        return self._post("/answer", payload)
+        body = dict(payload)
+        return self._client.answer.generate(
+            namespace=body.pop("namespace"),
+            query=body.pop("query"),
+            top_k=body.pop("top_k", None),
+            threshold=body.pop("threshold", None),
+            kiosk_mode=body.pop("kiosk_mode", False),
+            temperature=body.pop("temperature", None),
+            ai_model=body.pop("ai_model", None),
+            header_prompt=body.pop("header_prompt", None),
+            footer_prompt=body.pop("footer_prompt", None),
+            chat_history=body.pop("chat_history", None),
+            structured_response=body.pop("structured_response", None),
+        )

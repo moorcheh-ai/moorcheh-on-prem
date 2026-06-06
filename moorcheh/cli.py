@@ -11,7 +11,10 @@ from moorcheh.docker_runtime import (
     DEFAULT_OLLAMA_IMAGE,
     DEFAULT_SERVER_IMAGE,
     ComposeCommandError,
+    default_upload_dir,
     down,
+    ensure_upload_dir,
+    host_path_to_container_upload_path,
     up,
 )
 from moorcheh.user_config import configure_embedding_interactive, config_file_path, load_llm_config
@@ -74,7 +77,9 @@ def cmd_up(args: argparse.Namespace) -> int:
         print(result.stdout.strip())
     if result.stderr.strip():
         print(result.stderr.strip(), file=sys.stderr)
+    print(f"Server image: {args.server_image}")
     print(f"Data directory: {data_dir}")
+    print(f"Upload directory: {ensure_upload_dir()}")
     print(f"Embedding provider: {embedding.provider}  |  model: {embedding.model}")
     print(f"LLM provider: {llm.provider}  |  model: {llm.model}")
     if embedding.provider == "ollama" or llm.provider == "ollama":
@@ -208,6 +213,85 @@ def cmd_upload_job_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_upload_file(args: argparse.Namespace) -> int:
+    client = _api_client(args.base_url)
+    upload_root = default_upload_dir()
+    host_file = Path(args.file).resolve()
+    if not host_file.is_file():
+        raise ValueError(f"File not found: {host_file}")
+    container_path = host_path_to_container_upload_path(host_file, upload_root)
+    file_entry: dict[str, Any] = {"path": container_path}
+    if args.force_reindex:
+        file_entry["force_reindex"] = True
+    if args.metadata_json:
+        metadata = _parse_json(args.metadata_json, "metadata_json")
+        file_entry.update(metadata)
+    _print_json(
+        client.upload_namespace_files(
+            args.namespace_name,
+            {"files": [file_entry]},
+        )
+    )
+    return 0
+
+
+def cmd_upload_files(args: argparse.Namespace) -> int:
+    client = _api_client(args.base_url)
+    files_path = Path(args.files_file)
+    payload = json.loads(files_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("files file must contain a JSON object with a 'files' array")
+    _print_json(client.upload_namespace_files(args.namespace_name, payload))
+    return 0
+
+
+def cmd_list_files(args: argparse.Namespace) -> int:
+    client = _api_client(args.base_url)
+    _print_json(client.list_namespace_files(args.namespace_name))
+    return 0
+
+
+def cmd_file_get(args: argparse.Namespace) -> int:
+    client = _api_client(args.base_url)
+    _print_json(client.get_namespace_file(args.namespace_name, args.file_id))
+    return 0
+
+
+def cmd_delete_file(args: argparse.Namespace) -> int:
+    client = _api_client(args.base_url)
+    has_path = bool(args.path and args.path.strip())
+    has_file_id = bool(args.file_id and args.file_id.strip())
+    if has_path == has_file_id:
+        raise ValueError("Provide exactly one of --path or --file-id")
+    payload: dict[str, Any] = {}
+    if has_path:
+        upload_root = default_upload_dir()
+        host_file = Path(args.path).resolve()
+        payload["path"] = host_path_to_container_upload_path(host_file, upload_root)
+    else:
+        payload["file_id"] = args.file_id
+    _print_json(client.delete_namespace_files(args.namespace_name, payload))
+    return 0
+
+
+def cmd_file_job_status(args: argparse.Namespace) -> int:
+    client = _api_client(args.base_url)
+    _print_json(client.file_job_status(args.namespace_name, args.job_id))
+    return 0
+
+
+def cmd_fetch_text_data(args: argparse.Namespace) -> int:
+    client = _api_client(args.base_url)
+    _print_json(
+        client.fetch_text_data(
+            args.namespace_name,
+            limit=args.limit,
+            next_token=args.next_token or None,
+        )
+    )
+    return 0
+
+
 def cmd_items_get(args: argparse.Namespace) -> int:
     client = _api_client(args.base_url)
     ids = _parse_json_array(args.ids_json, "ids_json")
@@ -229,7 +313,6 @@ def cmd_items_delete(args: argparse.Namespace) -> int:
 
 
 def cmd_search(args: argparse.Namespace) -> int:
-    metadata = _parse_json(args.metadata_json, "metadata_json")
     client = _api_client(args.base_url)
     query: Any
     if args.query_vector_json is not None:
@@ -245,7 +328,6 @@ def cmd_search(args: argparse.Namespace) -> int:
         "query": query,
         "top_k": args.top_k,
         "threshold": args.threshold,
-        "metadata": metadata,
         "namespaces": namespaces,
     }
     _print_json(
@@ -406,6 +488,66 @@ def build_parser() -> argparse.ArgumentParser:
     p_upload_job_status.add_argument("--job-id", required=True)
     p_upload_job_status.set_defaults(func=cmd_upload_job_status)
 
+    p_upload_file = sub.add_parser(
+        "upload-file",
+        help="Upload one file from ~/.moorcheh/uploads (POST /namespaces/{namespace_name}/files).",
+    )
+    p_upload_file.add_argument("--base-url", default="http://localhost:8080")
+    p_upload_file.add_argument("--namespace-name", required=True)
+    p_upload_file.add_argument("--file", required=True, help="Host path to a file under ~/.moorcheh/uploads")
+    p_upload_file.add_argument("--force-reindex", action="store_true")
+    p_upload_file.add_argument("--metadata-json", default="", help='Optional JSON object merged into file metadata.')
+    p_upload_file.set_defaults(func=cmd_upload_file)
+
+    p_upload_files = sub.add_parser(
+        "upload-files",
+        help="Upload files from a JSON payload (POST /namespaces/{namespace_name}/files).",
+    )
+    p_upload_files.add_argument("--base-url", default="http://localhost:8080")
+    p_upload_files.add_argument("--namespace-name", required=True)
+    p_upload_files.add_argument("--files-file", required=True, help="JSON body with {'files': [...]} using container paths.")
+    p_upload_files.set_defaults(func=cmd_upload_files)
+
+    p_list_files = sub.add_parser("list-files", help="List indexed files in a namespace.")
+    p_list_files.add_argument("--base-url", default="http://localhost:8080")
+    p_list_files.add_argument("--namespace-name", required=True)
+    p_list_files.set_defaults(func=cmd_list_files)
+
+    p_file_get = sub.add_parser("file-get", help="Get one indexed file record by file_id.")
+    p_file_get.add_argument("--base-url", default="http://localhost:8080")
+    p_file_get.add_argument("--namespace-name", required=True)
+    p_file_get.add_argument("--file-id", required=True)
+    p_file_get.set_defaults(func=cmd_file_get)
+
+    p_delete_file = sub.add_parser(
+        "delete-file",
+        help="Remove a file from the Moorcheh index only (disk file is kept).",
+    )
+    p_delete_file.add_argument("--base-url", default="http://localhost:8080")
+    p_delete_file.add_argument("--namespace-name", required=True)
+    p_delete_file.add_argument("--path", help="Host path under ~/.moorcheh/uploads")
+    p_delete_file.add_argument("--file-id", help="Indexed file_id from list-files")
+    p_delete_file.set_defaults(func=cmd_delete_file)
+
+    p_file_job_status = sub.add_parser(
+        "file-job-status",
+        help="Poll file upload or delete job (GET .../file-jobs/{job_id}).",
+    )
+    p_file_job_status.add_argument("--base-url", default="http://localhost:8080")
+    p_file_job_status.add_argument("--namespace-name", required=True)
+    p_file_job_status.add_argument("--job-id", required=True)
+    p_file_job_status.set_defaults(func=cmd_file_job_status)
+
+    p_fetch_text_data = sub.add_parser(
+        "fetch-text-data",
+        help="List text chunks with cursor pagination (GET .../documents/fetch-text-data).",
+    )
+    p_fetch_text_data.add_argument("--base-url", default="http://localhost:8080")
+    p_fetch_text_data.add_argument("--namespace-name", required=True)
+    p_fetch_text_data.add_argument("--limit", type=int, help="Page size (default 100, max 100).")
+    p_fetch_text_data.add_argument("--next-token", help="Opaque cursor from a previous page.")
+    p_fetch_text_data.set_defaults(func=cmd_fetch_text_data)
+
     p_items_get = sub.add_parser("items-get", help="Call POST /namespaces/{namespace_name}/items/get.")
     p_items_get.add_argument("--base-url", default="http://localhost:8080")
     p_items_get.add_argument("--namespace-name", required=True)
@@ -425,7 +567,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_search.add_argument("--namespaces", default="", help="Comma-separated namespace list.")
     p_search.add_argument("--top-k", type=int, default=5)
     p_search.add_argument("--threshold", type=float, default=0.0)
-    p_search.add_argument("--metadata-json", default="{}")
     p_search.set_defaults(func=cmd_search)
 
     p_answer = sub.add_parser("answer", help="Call /answer endpoint.")
