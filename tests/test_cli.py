@@ -136,11 +136,22 @@ def test_cmd_namespace_list(list_ns: MagicMock) -> None:
     list_ns.assert_called_once()
 
 
-@patch.object(MoorchehApiClient, "delete_namespace", return_value={"job_id": "del-1"})
+@patch.object(MoorchehApiClient, "delete_namespace", return_value={"job_id": "del-1", "delete_job": {"status": "completed"}})
 def test_cmd_namespace_delete(delete: MagicMock) -> None:
-    args = argparse.Namespace(base_url="http://localhost:8080", namespace_name="docs")
+    args = argparse.Namespace(
+        base_url="http://localhost:8080",
+        namespace_name="docs",
+        no_wait=False,
+        poll_interval=0.2,
+        wait_timeout=120.0,
+    )
     assert cmd_namespace_delete(args) == 0
-    delete.assert_called_once_with("docs")
+    delete.assert_called_once_with(
+        "docs",
+        wait=True,
+        poll_interval=0.2,
+        timeout=120.0,
+    )
 
 
 @patch.object(MoorchehApiClient, "delete_namespace_job_status", return_value={"status": "completed"})

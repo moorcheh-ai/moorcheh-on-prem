@@ -177,7 +177,14 @@ def cmd_namespace_list(args: argparse.Namespace) -> int:
 
 def cmd_namespace_delete(args: argparse.Namespace) -> int:
     client = _api_client(args.base_url)
-    _print_json(client.delete_namespace(args.namespace_name))
+    _print_json(
+        client.delete_namespace(
+            args.namespace_name,
+            wait=not args.no_wait,
+            poll_interval=args.poll_interval,
+            timeout=args.wait_timeout,
+        )
+    )
     return 0
 
 
@@ -453,9 +460,29 @@ def build_parser() -> argparse.ArgumentParser:
     p_namespace_list.add_argument("--base-url", default="http://localhost:8080")
     p_namespace_list.set_defaults(func=cmd_namespace_list)
 
-    p_namespace_delete = sub.add_parser("namespace-delete", help="Call DELETE /namespaces/{namespace_name}.")
+    p_namespace_delete = sub.add_parser(
+        "namespace-delete",
+        help="Delete a namespace. Waits for the async delete job by default.",
+    )
     p_namespace_delete.add_argument("--base-url", default="http://localhost:8080")
     p_namespace_delete.add_argument("--namespace-name", required=True)
+    p_namespace_delete.add_argument(
+        "--no-wait",
+        action="store_true",
+        help="Return immediately with job_id instead of polling until completed.",
+    )
+    p_namespace_delete.add_argument(
+        "--poll-interval",
+        type=float,
+        default=0.2,
+        help="Seconds between delete-job status polls (default: 0.2).",
+    )
+    p_namespace_delete.add_argument(
+        "--wait-timeout",
+        type=float,
+        default=120.0,
+        help="Max seconds to wait for delete job completion (default: 120).",
+    )
     p_namespace_delete.set_defaults(func=cmd_namespace_delete)
 
     p_namespace_delete_job_status = sub.add_parser(

@@ -69,14 +69,36 @@ def test_create_namespace_posts_json(client: MoorchehApiClient) -> None:
     post.assert_called_once_with("http://localhost:8080/namespaces", json=body, timeout=15)
 
 
-def test_delete_namespace(client: MoorchehApiClient) -> None:
+def test_delete_namespace_waits_by_default(client: MoorchehApiClient) -> None:
+    delete_resp = {"job_id": "job-del-1", "status": "success"}
+    completed = {"status": "completed"}
+
     with patch(
         "moorcheh._http.requests.delete",
-        return_value=_mock_response(ok=True, status_code=200, json_data={"job_id": "job-1"}),
+        return_value=_mock_response(ok=True, status_code=202, json_data=delete_resp),
+    ):
+        with patch(
+            "moorcheh._http.requests.get",
+            return_value=_mock_response(ok=True, status_code=200, json_data=completed),
+        ):
+            with patch("moorcheh._jobs.time.sleep"):
+                result = client.delete_namespace("docs")
+
+    assert result["job_id"] == "job-del-1"
+    assert result["delete_job"]["status"] == "completed"
+
+
+def test_delete_namespace_no_wait(client: MoorchehApiClient) -> None:
+    with patch(
+        "moorcheh._http.requests.delete",
+        return_value=_mock_response(ok=True, status_code=202, json_data={"job_id": "job-del-1"}),
     ) as delete:
-        result = client.delete_namespace("docs")
-    assert result == {"job_id": "job-1"}
+        with patch("moorcheh._http.requests.get") as get:
+            result = client.delete_namespace("docs", wait=False)
+
     delete.assert_called_once_with("http://localhost:8080/namespaces/docs", timeout=15)
+    get.assert_not_called()
+    assert result["job_id"] == "job-del-1"
 
 
 def test_delete_namespace_job_status(client: MoorchehApiClient) -> None:
