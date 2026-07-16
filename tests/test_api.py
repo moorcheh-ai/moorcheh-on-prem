@@ -46,14 +46,14 @@ def test_raise_for_status_ok_does_not_raise(client: MoorchehApiClient) -> None:
 
 def test_health_calls_get_health(client: MoorchehApiClient) -> None:
     payload = {"status": "ok", "items": 1, "max_items": 100000, "remaining": 99999}
-    with patch("moorcheh._http.requests.get", return_value=_mock_response(ok=True, status_code=200, json_data=payload)) as get:
+    with patch("moorcheh.client._http.requests.get", return_value=_mock_response(ok=True, status_code=200, json_data=payload)) as get:
         assert client.health() == payload
     get.assert_called_once_with("http://localhost:8080/health", params=None, timeout=15)
 
 
 def test_list_namespaces(client: MoorchehApiClient) -> None:
     payload = {"namespaces": [{"namespace_name": "docs"}]}
-    with patch("moorcheh._http.requests.get", return_value=_mock_response(ok=True, status_code=200, json_data=payload)) as get:
+    with patch("moorcheh.client._http.requests.get", return_value=_mock_response(ok=True, status_code=200, json_data=payload)) as get:
         assert client.list_namespaces() == payload
     get.assert_called_once_with("http://localhost:8080/namespaces", params=None, timeout=15)
 
@@ -61,7 +61,7 @@ def test_list_namespaces(client: MoorchehApiClient) -> None:
 def test_create_namespace_posts_json(client: MoorchehApiClient) -> None:
     body = {"namespace_name": "docs", "type": "text"}
     with patch(
-        "moorcheh._http.requests.post",
+        "moorcheh.client._http.requests.post",
         return_value=_mock_response(ok=True, status_code=200, json_data={"ok": True}),
     ) as post:
         result = client.create_namespace(body)
@@ -74,14 +74,14 @@ def test_delete_namespace_waits_by_default(client: MoorchehApiClient) -> None:
     completed = {"status": "completed"}
 
     with patch(
-        "moorcheh._http.requests.delete",
+        "moorcheh.client._http.requests.delete",
         return_value=_mock_response(ok=True, status_code=202, json_data=delete_resp),
     ):
         with patch(
-            "moorcheh._http.requests.get",
+            "moorcheh.client._http.requests.get",
             return_value=_mock_response(ok=True, status_code=200, json_data=completed),
         ):
-            with patch("moorcheh._jobs.time.sleep"):
+            with patch("moorcheh.client._jobs.time.sleep"):
                 result = client.delete_namespace("docs")
 
     assert result["job_id"] == "job-del-1"
@@ -90,10 +90,10 @@ def test_delete_namespace_waits_by_default(client: MoorchehApiClient) -> None:
 
 def test_delete_namespace_no_wait(client: MoorchehApiClient) -> None:
     with patch(
-        "moorcheh._http.requests.delete",
+        "moorcheh.client._http.requests.delete",
         return_value=_mock_response(ok=True, status_code=202, json_data={"job_id": "job-del-1"}),
     ) as delete:
-        with patch("moorcheh._http.requests.get") as get:
+        with patch("moorcheh.client._http.requests.get") as get:
             result = client.delete_namespace("docs", wait=False)
 
     delete.assert_called_once_with("http://localhost:8080/namespaces/docs", timeout=15)
@@ -103,7 +103,7 @@ def test_delete_namespace_no_wait(client: MoorchehApiClient) -> None:
 
 def test_delete_namespace_job_status(client: MoorchehApiClient) -> None:
     payload = {"status": "completed"}
-    with patch("moorcheh._http.requests.get", return_value=_mock_response(ok=True, status_code=200, json_data=payload)) as get:
+    with patch("moorcheh.client._http.requests.get", return_value=_mock_response(ok=True, status_code=200, json_data=payload)) as get:
         assert client.delete_namespace_job_status("docs", "job-del-1") == payload
     get.assert_called_once_with(
         "http://localhost:8080/namespaces/docs/delete-jobs/job-del-1",
@@ -115,7 +115,7 @@ def test_delete_namespace_job_status(client: MoorchehApiClient) -> None:
 def test_upload_namespace_documents(client: MoorchehApiClient) -> None:
     body = {"documents": [{"id": "d1", "text": "hello"}]}
     with patch(
-        "moorcheh._http.requests.post",
+        "moorcheh.client._http.requests.post",
         return_value=_mock_response(ok=True, status_code=200, json_data={"job_id": "up-1"}),
     ) as post:
         assert client.upload_namespace_documents("docs", body) == {"job_id": "up-1"}
@@ -125,7 +125,7 @@ def test_upload_namespace_documents(client: MoorchehApiClient) -> None:
 def test_upload_namespace_vectors(client: MoorchehApiClient) -> None:
     body = {"vectors": [{"id": "v1", "vector": [0.1, 0.2]}]}
     with patch(
-        "moorcheh._http.requests.post",
+        "moorcheh.client._http.requests.post",
         return_value=_mock_response(ok=True, status_code=200, json_data={"job_id": "up-2"}),
     ) as post:
         assert client.upload_namespace_vectors("vecns", body) == {"job_id": "up-2"}
@@ -134,7 +134,7 @@ def test_upload_namespace_vectors(client: MoorchehApiClient) -> None:
 
 def test_fetch_text_data(client: MoorchehApiClient) -> None:
     with patch(
-        "moorcheh._http.requests.get",
+        "moorcheh.client._http.requests.get",
         return_value=_mock_response(ok=True, status_code=200, json_data={"items": []}),
     ) as get:
         assert client.fetch_text_data("docs", limit=2, next_token="tok") == {"items": []}
@@ -148,7 +148,7 @@ def test_fetch_text_data(client: MoorchehApiClient) -> None:
 def test_get_namespace_items(client: MoorchehApiClient) -> None:
     body = {"ids": ["a", "b"]}
     with patch(
-        "moorcheh._http.requests.post",
+        "moorcheh.client._http.requests.post",
         return_value=_mock_response(ok=True, status_code=200, json_data={"items": []}),
     ) as post:
         assert client.get_namespace_items("docs", body) == {"items": []}
@@ -158,7 +158,7 @@ def test_get_namespace_items(client: MoorchehApiClient) -> None:
 def test_delete_namespace_items(client: MoorchehApiClient) -> None:
     body = {"ids": ["a"]}
     with patch(
-        "moorcheh._http.requests.post",
+        "moorcheh.client._http.requests.post",
         return_value=_mock_response(ok=True, status_code=200, json_data={"deleted": 1}),
     ) as post:
         assert client.delete_namespace_items("docs", body) == {"deleted": 1}
@@ -167,7 +167,7 @@ def test_delete_namespace_items(client: MoorchehApiClient) -> None:
 
 def test_upload_job_status(client: MoorchehApiClient) -> None:
     payload = {"status": "completed"}
-    with patch("moorcheh._http.requests.get", return_value=_mock_response(ok=True, status_code=200, json_data=payload)) as get:
+    with patch("moorcheh.client._http.requests.get", return_value=_mock_response(ok=True, status_code=200, json_data=payload)) as get:
         assert client.upload_job_status("docs", "job-up-1") == payload
     get.assert_called_once_with(
         "http://localhost:8080/namespaces/docs/upload-jobs/job-up-1",
@@ -185,7 +185,7 @@ def test_upload_namespace_documents_job_status_alias(client: MoorchehApiClient) 
 def test_search(client: MoorchehApiClient) -> None:
     body = {"query": "hello", "namespaces": ["docs"], "top_k": 3}
     with patch(
-        "moorcheh._http.requests.post",
+        "moorcheh.client._http.requests.post",
         return_value=_mock_response(ok=True, status_code=200, json_data={"results": []}),
     ) as post:
         assert client.search(body) == {"results": []}
@@ -199,7 +199,7 @@ def test_search(client: MoorchehApiClient) -> None:
 def test_answer(client: MoorchehApiClient) -> None:
     body = {"query": "hello", "namespace": ""}
     with patch(
-        "moorcheh._http.requests.post",
+        "moorcheh.client._http.requests.post",
         return_value=_mock_response(ok=True, status_code=200, json_data={"answer": "hi"}),
     ) as post:
         assert client.answer(body) == {"answer": "hi"}
@@ -241,7 +241,7 @@ def test_api_error_falls_back_to_response_text(client: MoorchehApiClient) -> Non
 
 def test_post_raises_on_error(client: MoorchehApiClient) -> None:
     with patch(
-        "moorcheh._http.requests.post",
+        "moorcheh.client._http.requests.post",
         return_value=_mock_response(ok=False, status_code=400, json_data={"message": "bad request"}),
     ):
         with pytest.raises(MoorchehApiError, match="bad request"):

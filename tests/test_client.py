@@ -38,7 +38,7 @@ def test_client_context_manager() -> None:
 
 def test_namespaces_create(client: MoorchehClient) -> None:
     with patch(
-        "moorcheh._http.requests.post",
+        "moorcheh.client._http.requests.post",
         return_value=_mock_response(ok=True, status_code=200, json_data={"status": "success"}),
     ) as post:
         result = client.namespaces.create("docs", type="text")
@@ -53,7 +53,7 @@ def test_namespaces_create(client: MoorchehClient) -> None:
 def test_documents_upload(client: MoorchehClient) -> None:
     docs = [{"id": "d1", "text": "hello"}]
     with patch(
-        "moorcheh._http.requests.post",
+        "moorcheh.client._http.requests.post",
         return_value=_mock_response(ok=True, status_code=200, json_data={"job_id": "j1"}),
     ) as post:
         result = client.documents.upload("docs", documents=docs)
@@ -67,7 +67,7 @@ def test_documents_upload(client: MoorchehClient) -> None:
 
 def test_documents_fetch_text_data(client: MoorchehClient) -> None:
     with patch(
-        "moorcheh._http.requests.get",
+        "moorcheh.client._http.requests.get",
         return_value=_mock_response(ok=True, status_code=200, json_data={"items": []}),
     ) as get:
         result = client.documents.fetch_text_data("docs", limit=2, next_token="tok")
@@ -82,7 +82,7 @@ def test_documents_fetch_text_data(client: MoorchehClient) -> None:
 def test_files_upload(client: MoorchehClient) -> None:
     files = [{"path": "/uploads/doc.pdf"}]
     with patch(
-        "moorcheh._http.requests.post",
+        "moorcheh.client._http.requests.post",
         return_value=_mock_response(ok=True, status_code=200, json_data={"job_id": "fj1"}),
     ) as post:
         result = client.files.upload("docs", files=files)
@@ -96,7 +96,7 @@ def test_files_upload(client: MoorchehClient) -> None:
 
 def test_similarity_search_query(client: MoorchehClient) -> None:
     with patch(
-        "moorcheh._http.requests.post",
+        "moorcheh.client._http.requests.post",
         return_value=_mock_response(ok=True, status_code=200, json_data={"results": []}),
     ) as post:
         result = client.similarity_search.query(
@@ -120,7 +120,7 @@ def test_similarity_search_query(client: MoorchehClient) -> None:
 
 def test_answer_generate(client: MoorchehClient) -> None:
     with patch(
-        "moorcheh._http.requests.post",
+        "moorcheh.client._http.requests.post",
         return_value=_mock_response(ok=True, status_code=200, json_data={"answer": "hi"}),
     ) as post:
         result = client.answer.generate(namespace="docs", query="hello", top_k=2)
