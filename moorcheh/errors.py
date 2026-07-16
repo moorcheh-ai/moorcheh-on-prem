@@ -19,3 +19,7 @@ class MoorchehApiError(Exception):
     @property
     def is_item_limit_exceeded(self) -> bool:
         return self.status_code == 409 and bool(self.body)
+
+    @property
+    def is_conflict(self) -> bool:
+        return self.status_code == 409

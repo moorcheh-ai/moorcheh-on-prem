@@ -42,8 +42,20 @@ class MoorchehApiClient:
     def list_namespaces(self) -> dict[str, Any]:
         return self._client.namespaces.list()
 
-    def delete_namespace(self, namespace_name: str) -> dict[str, Any]:
-        return self._client.namespaces.delete(namespace_name)
+    def delete_namespace(
+        self,
+        namespace_name: str,
+        *,
+        wait: bool = True,
+        poll_interval: float = 0.2,
+        timeout: float = 120.0,
+    ) -> dict[str, Any]:
+        return self._client.namespaces.delete(
+            namespace_name,
+            wait=wait,
+            poll_interval=poll_interval,
+            timeout=timeout,
+        )
 
     def delete_namespace_job_status(self, namespace_name: str, job_id: str) -> dict[str, Any]:
         return self._client.namespaces.delete_job_status(namespace_name, job_id)

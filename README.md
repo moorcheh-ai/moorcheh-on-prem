@@ -6,7 +6,7 @@ Python package for **Moorcheh on-prem**: start the runtime with one command and 
 - **Import:** `from moorcheh import MoorchehApiClient, MoorchehApiError`
 - **CLI:** `moorcheh` (after install)
 
-Requires [Docker](https://www.docker.com/). Pulls `moorcheh/server:latest` from Docker Hub on first `moorcheh up`.
+Requires [Docker](https://www.docker.com/). Pulls `moorcheh/server:latest` from Docker Hub on first `moorcheh up` (multi-arch: `linux/amd64` and `linux/arm64`, including Apple Silicon Mac).
 
 ## Install
 
