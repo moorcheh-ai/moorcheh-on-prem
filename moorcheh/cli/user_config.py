@@ -468,7 +468,7 @@ def _configure_llm_interactive(embedding: EmbeddingConfig) -> LlmConfig:
                 print("API key is required for cloud LLM providers.")
 
     if provider == "ollama":
-        from moorcheh.ollama_setup import prepare_ollama_at_configure
+        from moorcheh.cli.ollama_setup import prepare_ollama_at_configure
 
         prepare_ollama_at_configure(model)
 
@@ -493,7 +493,7 @@ def configure_embedding_interactive(*, force: bool = False) -> EmbeddingConfig:
         if reuse in ("", "y", "yes"):
             resolved = existing.with_provider_defaults()
             if resolved.provider == "ollama":
-                from moorcheh.ollama_setup import prepare_ollama_at_configure
+                from moorcheh.cli.ollama_setup import prepare_ollama_at_configure
 
                 prepare_ollama_at_configure(resolved.model)
             return resolved
@@ -521,7 +521,7 @@ def configure_embedding_interactive(*, force: bool = False) -> EmbeddingConfig:
             print("API key is required for cloud embedding providers.")
 
     if provider == "ollama":
-        from moorcheh.ollama_setup import prepare_ollama_at_configure
+        from moorcheh.cli.ollama_setup import prepare_ollama_at_configure
 
         prepare_ollama_at_configure(model)
 

@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
-from moorcheh.client import MoorchehClient
+from moorcheh.client.client import MoorchehClient
 
 
 def _mock_response(

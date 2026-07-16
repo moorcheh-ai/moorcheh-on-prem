@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from moorcheh.user_config import (
+from moorcheh.cli.user_config import (
     EmbeddingConfig,
     _print_existing_data_warning,
     ensure_embedding_config,
@@ -52,7 +52,7 @@ def test_print_existing_data_warning_when_data_present(
         json.dumps([{"name": "docs", "type": "text"}]),
         encoding="utf-8",
     )
-    monkeypatch.setattr("moorcheh.user_config.default_data_dir", lambda: tmp_path)
+    monkeypatch.setattr("moorcheh.cli.user_config.default_data_dir", lambda: tmp_path)
     _print_existing_data_warning()
     captured = capsys.readouterr()
     assert "WARNING: existing Moorcheh data detected" in captured.out
@@ -64,7 +64,7 @@ def test_print_existing_data_warning_silent_when_empty(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("moorcheh.user_config.default_data_dir", lambda: tmp_path)
+    monkeypatch.setattr("moorcheh.cli.user_config.default_data_dir", lambda: tmp_path)
     _print_existing_data_warning()
     assert capsys.readouterr().out == ""
 
@@ -120,7 +120,7 @@ def test_embedding_config_from_dict_rejects_unknown_provider() -> None:
 
 
 def test_save_and_load_embedding_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("moorcheh.user_config.config_file_path", lambda: tmp_path / "config.json")
+    monkeypatch.setattr("moorcheh.cli.user_config.config_file_path", lambda: tmp_path / "config.json")
     saved = save_embedding_config(
         EmbeddingConfig(
             provider="cohere",
@@ -142,19 +142,19 @@ def test_save_and_load_embedding_config(tmp_path: Path, monkeypatch: pytest.Monk
 
 
 def test_load_embedding_config_missing_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("moorcheh.user_config.config_file_path", lambda: tmp_path / "missing.json")
+    monkeypatch.setattr("moorcheh.cli.user_config.config_file_path", lambda: tmp_path / "missing.json")
     assert load_embedding_config() is None
 
 
 def test_load_embedding_config_missing_embedding_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     path = tmp_path / "config.json"
     path.write_text(json.dumps({"other": 1}), encoding="utf-8")
-    monkeypatch.setattr("moorcheh.user_config.config_file_path", lambda: path)
+    monkeypatch.setattr("moorcheh.cli.user_config.config_file_path", lambda: path)
     assert load_embedding_config() is None
 
 
 def test_ensure_embedding_config_from_flags(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("moorcheh.user_config.config_file_path", lambda: tmp_path / "config.json")
+    monkeypatch.setattr("moorcheh.cli.user_config.config_file_path", lambda: tmp_path / "config.json")
     config = ensure_embedding_config(
         provider="openai",
         model="text-embedding-3-small",
@@ -169,13 +169,13 @@ def test_ensure_embedding_config_from_flags(tmp_path: Path, monkeypatch: pytest.
 
 
 def test_ensure_embedding_config_cloud_requires_api_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("moorcheh.user_config.config_file_path", lambda: tmp_path / "config.json")
+    monkeypatch.setattr("moorcheh.cli.user_config.config_file_path", lambda: tmp_path / "config.json")
     with pytest.raises(ValueError, match="API key required"):
         ensure_embedding_config(provider="openai", interactive=False)
 
 
 def test_ensure_embedding_config_reuses_saved_api_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("moorcheh.user_config.config_file_path", lambda: tmp_path / "config.json")
+    monkeypatch.setattr("moorcheh.cli.user_config.config_file_path", lambda: tmp_path / "config.json")
     save_embedding_config(
         EmbeddingConfig(
             provider="openai",
@@ -190,13 +190,13 @@ def test_ensure_embedding_config_reuses_saved_api_key(tmp_path: Path, monkeypatc
 
 
 def test_ensure_embedding_config_no_configure_without_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("moorcheh.user_config.config_file_path", lambda: tmp_path / "config.json")
+    monkeypatch.setattr("moorcheh.cli.user_config.config_file_path", lambda: tmp_path / "config.json")
     with pytest.raises(ValueError, match="No embedding configuration"):
         ensure_embedding_config(interactive=False)
 
 
 def test_ensure_embedding_config_loads_saved(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("moorcheh.user_config.config_file_path", lambda: tmp_path / "config.json")
+    monkeypatch.setattr("moorcheh.cli.user_config.config_file_path", lambda: tmp_path / "config.json")
     save_embedding_config(EmbeddingConfig(provider="ollama", model="all-minilm", base_url="http://host.docker.internal:11434"))
     config = ensure_embedding_config(interactive=False)
     assert config.provider == "ollama"

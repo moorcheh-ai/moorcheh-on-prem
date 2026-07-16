@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from moorcheh.api import MoorchehApiClient, MoorchehApiError
-from moorcheh.cli import (
+from moorcheh.client.api import MoorchehApiClient, MoorchehApiError
+from moorcheh.cli.cli import (
     _parse_json,
     _parse_json_array,
     build_parser,
@@ -28,8 +28,8 @@ from moorcheh.cli import (
     cmd_upload_vectors,
     main,
 )
-from moorcheh.docker_runtime import ComposeCommandError
-from moorcheh.user_config import EmbeddingConfig, LlmConfig
+from moorcheh.cli.docker_runtime import ComposeCommandError
+from moorcheh.cli.user_config import EmbeddingConfig, LlmConfig
 
 
 ALL_COMMANDS = {
@@ -339,7 +339,7 @@ def _up_args(**overrides: object) -> argparse.Namespace:
 
 
 @patch(
-    "moorcheh.cli.up",
+    "moorcheh.cli.cli.up",
     return_value=(
         MagicMock(stdout="started\n", stderr=""),
         True,
@@ -357,7 +357,7 @@ def test_cmd_up_bundled_ollama(up: MagicMock, capsys: pytest.CaptureFixture[str]
 
 
 @patch(
-    "moorcheh.cli.up",
+    "moorcheh.cli.cli.up",
     return_value=(
         MagicMock(stdout="", stderr=""),
         False,
@@ -380,11 +380,11 @@ def test_cmd_up_rejects_conflicting_ollama_flags() -> None:
 
 
 @patch(
-    "moorcheh.cli.load_llm_config",
+    "moorcheh.cli.cli.load_llm_config",
     return_value=LlmConfig(provider="cohere", model="command-r-plus-08-2024", api_key="key"),
 )
 @patch(
-    "moorcheh.cli.configure_embedding_interactive",
+    "moorcheh.cli.cli.configure_embedding_interactive",
     return_value=EmbeddingConfig(provider="cohere", model="embed-v4.0", api_key="key"),
 )
 def test_cmd_configure(
@@ -402,7 +402,7 @@ def test_cmd_configure(
     assert "moorcheh down" in out
 
 
-@patch("moorcheh.cli.down", return_value=MagicMock(stdout="", stderr=""))
+@patch("moorcheh.cli.cli.down", return_value=MagicMock(stdout="", stderr=""))
 def test_cmd_down_bundled_ollama(down: MagicMock) -> None:
     args = argparse.Namespace(bundled_ollama=True, use_host_ollama=False)
     assert cmd_down(args) == 0
@@ -414,7 +414,7 @@ def test_main_exits_on_moorcheh_api_error(capsys: pytest.CaptureFixture[str]) ->
     args = parser.parse_args(["namespace-list"])
     with (
         patch.object(parser, "parse_args", return_value=args),
-        patch("moorcheh.cli.build_parser", return_value=parser),
+        patch("moorcheh.cli.cli.build_parser", return_value=parser),
         patch.object(MoorchehApiClient, "list_namespaces", side_effect=MoorchehApiError("fail", 503, {"message": "down"})),
         pytest.raises(SystemExit) as exc,
     ):
@@ -431,8 +431,8 @@ def test_main_exits_on_compose_error(capsys: pytest.CaptureFixture[str]) -> None
     compose_err = ComposeCommandError(["docker"], 1, "out", "compose failed")
     with (
         patch.object(parser, "parse_args", return_value=args),
-        patch("moorcheh.cli.build_parser", return_value=parser),
-        patch("moorcheh.cli.up", side_effect=compose_err),
+        patch("moorcheh.cli.cli.build_parser", return_value=parser),
+        patch("moorcheh.cli.cli.up", side_effect=compose_err),
         pytest.raises(SystemExit) as exc,
     ):
         main()

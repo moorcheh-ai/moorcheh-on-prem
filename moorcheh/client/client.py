@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from moorcheh._http import HttpTransport
-from moorcheh.resources import (
+from moorcheh.client._http import HttpTransport
+from moorcheh.client.resources import (
     AnswerResource,
     DocumentsResource,
     FilesResource,

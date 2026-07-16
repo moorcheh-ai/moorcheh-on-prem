@@ -5,8 +5,9 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "moorcheh-client"
 dynamic = ["version"]
-description = "Moorcheh client and runtime launcher for on-prem server containers."
+description = "Self-hosted open-source Moorcheh — semantic search, RAG, and document indexing on your own infrastructure."
 readme = "README.md"
+license = "Apache-2.0"
 requires-python = ">=3.10"
 dependencies = [
   "requests>=2.31.0",
@@ -26,7 +27,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [project.scripts]
-moorcheh = "moorcheh.cli:main"
+moorcheh = "moorcheh.cli.cli:main"
 
 [tool.setuptools]
 include-package-data = true
@@ -36,7 +37,7 @@ where = ["."]
 include = ["moorcheh*"]
 
 [tool.setuptools.package-data]
-moorcheh = ["compose/docker-compose.yml"]
+"moorcheh.cli" = ["compose/docker-compose.yml"]
 
 [tool.setuptools_scm]
 tag_regex = "^v(?P<version>\\d+\\.\\d+\\.\\d+(-[\\w.]+)?)$"

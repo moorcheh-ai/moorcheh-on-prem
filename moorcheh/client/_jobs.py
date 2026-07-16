@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from typing import Any, Callable
 
-from moorcheh.errors import MoorchehApiError
+from moorcheh.client.errors import MoorchehApiError
 
 _TERMINAL_DELETE_STATUSES = frozenset({"completed", "failed"})
 

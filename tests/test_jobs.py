@@ -5,9 +5,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
-from moorcheh._jobs import wait_for_namespace_delete_job
-from moorcheh.client import MoorchehClient
-from moorcheh.errors import MoorchehApiError
+from moorcheh.client._jobs import wait_for_namespace_delete_job
+from moorcheh.client.client import MoorchehClient
+from moorcheh.client.errors import MoorchehApiError
 
 
 def _mock_response(

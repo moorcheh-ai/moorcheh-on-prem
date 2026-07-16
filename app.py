@@ -8,8 +8,8 @@ import requests
 from flask import Flask, jsonify, render_template, request
 from werkzeug.utils import secure_filename
 
-from moorcheh.docker_runtime import ensure_upload_dir, host_path_to_container_upload_path
-from moorcheh.user_config import LLM_PROVIDER_MODELS, load_embedding_config, load_llm_config
+from moorcheh.cli.docker_runtime import ensure_upload_dir, host_path_to_container_upload_path
+from moorcheh.cli.user_config import LLM_PROVIDER_MODELS, load_embedding_config, load_llm_config
 
 
 SERVER_BASE_URL = os.getenv("SERVER_BASE_URL", "http://localhost:8080")

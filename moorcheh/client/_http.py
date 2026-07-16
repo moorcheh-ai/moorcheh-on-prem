@@ -4,7 +4,7 @@ from typing import Any
 
 import requests
 
-from moorcheh.errors import MoorchehApiError
+from moorcheh.client.errors import MoorchehApiError
 
 
 class HttpTransport:

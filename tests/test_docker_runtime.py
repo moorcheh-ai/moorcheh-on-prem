@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from moorcheh import docker_runtime
-from moorcheh.user_config import EmbeddingConfig, LlmConfig
+from moorcheh.cli import docker_runtime
+from moorcheh.cli.user_config import EmbeddingConfig, LlmConfig
 
 
 def test_compose_file_path_is_packaged() -> None:
@@ -71,12 +71,12 @@ def test_up_openai_starts_server_only(tmp_path: Path, monkeypatch: pytest.Monkey
     compose_result = MagicMock(stdout="", stderr="", returncode=0)
 
     with (
-        patch("moorcheh.docker_runtime.ensure_embedding_config", return_value=embedding),
-        patch("moorcheh.docker_runtime.load_llm_config", return_value=llm),
-        patch("moorcheh.docker_runtime.remove_stale_compose_containers") as remove_stale,
-        patch("moorcheh.docker_runtime.ensure_data_dir", return_value=tmp_path),
-        patch("moorcheh.docker_runtime.run_compose", return_value=compose_result) as run_compose,
-        patch("moorcheh.docker_runtime.ensure_ollama_model") as ensure_model,
+        patch("moorcheh.cli.docker_runtime.ensure_embedding_config", return_value=embedding),
+        patch("moorcheh.cli.docker_runtime.load_llm_config", return_value=llm),
+        patch("moorcheh.cli.docker_runtime.remove_stale_compose_containers") as remove_stale,
+        patch("moorcheh.cli.docker_runtime.ensure_data_dir", return_value=tmp_path),
+        patch("moorcheh.cli.docker_runtime.run_compose", return_value=compose_result) as run_compose,
+        patch("moorcheh.cli.docker_runtime.ensure_ollama_model") as ensure_model,
     ):
         result, bundled, data_dir, returned, returned_llm = docker_runtime.up(
             "moorcheh/server:latest",
@@ -108,13 +108,13 @@ def test_up_ollama_host_skips_bundled_container(tmp_path: Path) -> None:
     compose_result = MagicMock(stdout="", stderr="", returncode=0)
 
     with (
-        patch("moorcheh.docker_runtime.ensure_embedding_config", return_value=embedding),
-        patch("moorcheh.docker_runtime.load_llm_config", return_value=llm),
-        patch("moorcheh.docker_runtime.should_use_bundled_ollama", return_value=False),
-        patch("moorcheh.docker_runtime.remove_stale_compose_containers"),
-        patch("moorcheh.docker_runtime.ensure_data_dir", return_value=tmp_path),
-        patch("moorcheh.docker_runtime.ensure_ollama_model"),
-        patch("moorcheh.docker_runtime.run_compose", return_value=compose_result) as run_compose,
+        patch("moorcheh.cli.docker_runtime.ensure_embedding_config", return_value=embedding),
+        patch("moorcheh.cli.docker_runtime.load_llm_config", return_value=llm),
+        patch("moorcheh.cli.docker_runtime.should_use_bundled_ollama", return_value=False),
+        patch("moorcheh.cli.docker_runtime.remove_stale_compose_containers"),
+        patch("moorcheh.cli.docker_runtime.ensure_data_dir", return_value=tmp_path),
+        patch("moorcheh.cli.docker_runtime.ensure_ollama_model"),
+        patch("moorcheh.cli.docker_runtime.run_compose", return_value=compose_result) as run_compose,
     ):
         _, bundled, _, _, _ = docker_runtime.up(
             "moorcheh/server:latest",
@@ -135,9 +135,9 @@ def test_down_stops_server_only_for_cloud_provider() -> None:
     compose_result = MagicMock(returncode=0)
 
     with (
-        patch("moorcheh.docker_runtime.load_embedding_config", return_value=embedding),
-        patch("moorcheh.docker_runtime.ensure_data_dir", return_value=Path("/data")),
-        patch("moorcheh.docker_runtime.run_compose", return_value=compose_result) as run_compose,
+        patch("moorcheh.cli.docker_runtime.load_embedding_config", return_value=embedding),
+        patch("moorcheh.cli.docker_runtime.ensure_data_dir", return_value=Path("/data")),
+        patch("moorcheh.cli.docker_runtime.run_compose", return_value=compose_result) as run_compose,
     ):
         docker_runtime.down(include_ollama=None)
 

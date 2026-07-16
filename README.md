@@ -1,9 +1,9 @@
-# moorcheh-client
+# Moorcheh on-prem
 
-Python package for **Moorcheh on-prem**: start the runtime with one command and call the API from your application.
+Self-hosted, open-source **Moorcheh** — run semantic search, RAG, and document indexing on your own infrastructure with Docker.
 
-- **PyPI name:** `moorcheh-client`
-- **Import:** `from moorcheh import MoorchehApiClient, MoorchehApiError`
+- **PyPI:** `moorcheh-client`
+- **Import:** `from moorcheh import MoorchehClient, MoorchehApiClient, MoorchehApiError`
 - **CLI:** `moorcheh` (after install)
 
 Requires [Docker](https://www.docker.com/). Pulls `moorcheh/server:latest` from Docker Hub on first `moorcheh up` (multi-arch: `linux/amd64` and `linux/arm64`, including Apple Silicon Mac).
@@ -317,3 +317,13 @@ Open `http://localhost:5000`. Requires `moorcheh up` on port 8080.
 - Python 3.10+
 - Docker Desktop (or Docker Engine)
 - Embedding provider: Ollama (host or `--bundled-ollama`), OpenAI, or Cohere (API key in `~/.moorcheh/config.json`)
+
+---
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE).

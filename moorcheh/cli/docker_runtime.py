@@ -7,8 +7,8 @@ import urllib.request
 from importlib import resources
 from pathlib import Path
 
-from moorcheh.ollama_setup import ensure_ollama_model, wait_for_ollama
-from moorcheh.user_config import EmbeddingConfig, LlmConfig, ensure_embedding_config, load_embedding_config, load_llm_config
+from moorcheh.cli.ollama_setup import ensure_ollama_model, wait_for_ollama
+from moorcheh.cli.user_config import EmbeddingConfig, LlmConfig, ensure_embedding_config, load_embedding_config, load_llm_config
 
 
 DEFAULT_SERVER_IMAGE = "moorcheh/server:latest"
@@ -83,7 +83,7 @@ class ComposeCommandError(RuntimeError):
 
 
 def compose_file_path() -> str:
-    return str(resources.files("moorcheh").joinpath("compose/docker-compose.yml"))
+    return str(resources.files("moorcheh.cli").joinpath("compose/docker-compose.yml"))
 
 
 def ollama_is_reachable(host: str = DEFAULT_OLLAMA_HOST, port: int = DEFAULT_OLLAMA_PORT, timeout: float = 2.0) -> bool:
