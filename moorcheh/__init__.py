@@ -2,9 +2,7 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
-from moorcheh.api import MoorchehApiClient
-from moorcheh.client import MoorchehClient
-from moorcheh.errors import MoorchehApiError
+from moorcheh.client import MoorchehApiClient, MoorchehClient, MoorchehApiError
 
 __all__ = ["MoorchehApiClient", "MoorchehClient", "MoorchehApiError", "__version__"]
 

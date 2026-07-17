@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from moorcheh._http import HttpTransport
+from moorcheh.client._http import HttpTransport
 
 
 class SimilaritySearchResource:

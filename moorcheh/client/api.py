@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from moorcheh.client import MoorchehClient
-from moorcheh.errors import MoorchehApiError
+from moorcheh.client.client import MoorchehClient
+from moorcheh.client.errors import MoorchehApiError
 
 __all__ = ["MoorchehApiClient", "MoorchehApiError"]
 

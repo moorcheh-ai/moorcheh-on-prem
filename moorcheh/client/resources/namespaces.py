@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from moorcheh._http import HttpTransport
-from moorcheh._jobs import wait_for_namespace_delete_job
+from moorcheh.client._http import HttpTransport
+from moorcheh.client._jobs import wait_for_namespace_delete_job
 
 
 class NamespacesResource:

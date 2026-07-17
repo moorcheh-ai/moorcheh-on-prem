@@ -1,12 +1,22 @@
-# moorcheh-client
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/moorcheh-logo-dark.svg">
+    <img alt="Moorcheh" src="assets/moorcheh-logo-light.svg" width="280">
+  </picture>
+</p>
 
-Python package for **Moorcheh on-prem**: start the runtime with one command and call the API from your application.
+<p align="center">
+  <strong>Self-hosted, open-source Moorcheh</strong> - The Information-Theoretic Search Engine for RAG & Agentic Memory
+</p>
 
-- **PyPI name:** `moorcheh-client`
-- **Import:** `from moorcheh import MoorchehApiClient, MoorchehApiError`
-- **CLI:** `moorcheh` (after install)
+<p align="center">
+  <a href="https://pypi.org/project/moorcheh-client/">PyPI</a> ·
+  <a href="https://docs.moorcheh.ai/on-prem">Documentation</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a> ·
+  <a href="LICENSE">Apache 2.0</a>
+</p>
 
-Requires [Docker](https://www.docker.com/). Pulls `moorcheh/server:latest` from Docker Hub on first `moorcheh up` (multi-arch: `linux/amd64` and `linux/arm64`, including Apple Silicon Mac).
+---
 
 ## Install
 
@@ -14,306 +24,70 @@ Requires [Docker](https://www.docker.com/). Pulls `moorcheh/server:latest` from 
 pip install moorcheh-client
 ```
 
-Local development:
-
-```bash
-pip install -e .
-```
+**Requirements:** Python 3.10+, [Docker](https://www.docker.com/), and an embedding provider (Ollama, OpenAI, or Cohere).
 
 ## Quick start
 
-**1. Start Moorcheh**
-
 ```bash
-moorcheh up
+moorcheh up          # first run prompts for embedding/LLM config
+moorcheh status      # health + quota
 ```
 
-API: `http://localhost:8080`  
-Data: `~/.moorcheh/data` (e.g. `C:\Users\<you>\.moorcheh\data` on Windows)
-
-**2. Use from Python**
+API: `http://localhost:8080` · Data: `~/.moorcheh/data`
 
 ```python
-from moorcheh import MoorchehApiClient
+from moorcheh import MoorchehClient
 
-client = MoorchehApiClient("http://localhost:8080")
-print(client.health())  # items, max_items, remaining
-```
+client = MoorchehClient("http://localhost:8080")
 
-**3. Stop (data is kept)**
+client.namespaces.create("docs", type="text")
+job = client.documents.upload("docs", documents=[
+    {"id": "doc-1", "text": "Hello from Moorcheh on-prem"},
+])
+# poll job["job_id"] until completed, then search or answer
 
-```bash
-moorcheh down
-```
+results = client.similarity_search.query(
+    namespaces=["docs"],
+    query="Hello",
+    top_k=5,
+)
 
----
-
-## Python API
-
-Use `MoorchehApiClient` in your app. Moorcheh must already be running (`moorcheh up` or your own deployment on port 8080).
-
-### Connect
-
-```python
-from moorcheh import MoorchehApiClient, MoorchehApiError
-
-client = MoorchehApiClient("http://localhost:8080", timeout=30)
-```
-
-### Health and quota
-
-```python
-health = client.health()
-# status, model, items, max_items, remaining
-```
-
-### Namespaces
-
-```python
-client.create_namespace({
-    "namespace_name": "docs",
-    "type": "text",
-})
-
-client.create_namespace({
-    "namespace_name": "products_vec",
-    "type": "vector",
-    "vector_dimension": 768,
-})
-
-namespaces = client.list_namespaces()
-client.delete_namespace("docs")  # async; returns job_id
-```
-
-### Upload documents (async)
-
-```python
-resp = client.upload_namespace_documents("docs", {
-    "documents": [
-        {
-            "id": "doc-1",
-            "text": "Moorcheh on-prem retrieval test",
-            "team": "ai",
-        }
-    ],
-})
-job_id = resp["job_id"]
-
-# Poll until status == "completed"
-status = client.upload_job_status("docs", job_id)
-```
-
-### Upload vectors (async)
-
-```python
-resp = client.upload_namespace_vectors("products_vec", {
-    "vectors": [
-        {
-            "id": "vec-1",
-            "vector": [0.1, 0.2, 0.3],  # length must match namespace dimension
-            "source": "demo",
-        }
-    ],
-})
-job_id = resp["job_id"]
-client.upload_job_status("products_vec", job_id)
-```
-
-### Search
-
-```python
-# Text query (text namespaces)
-results = client.search({
-    "query": "on prem retrieval",
-    "namespaces": ["docs"],
-    "top_k": 5,
-    "threshold": 0.0,
-    "metadata": {"team": "ai"},  # optional filter
-})
-
-# Vector query (vector namespaces)
-results = client.search({
-    "query": [0.1, 0.2, 0.3],
-    "namespaces": ["products_vec"],
-    "top_k": 5,
-})
-```
-
-### Get and delete items
-
-Item ids are **unique per namespace** (the same id string may exist in different namespaces).
-
-```python
-client.get_namespace_items("docs", {"ids": ["doc-1"]})
-client.delete_namespace_items("docs", {"ids": ["doc-1"]})
-```
-
-### Errors (including 100k limit)
-
-```python
-try:
-    client.upload_namespace_documents("docs", {"documents": [...]})
-except MoorchehApiError as e:
-    if e.is_item_limit_exceeded:  # HTTP 409
-        print(e.body)  # items, max_items, requested_new
-    else:
-        print(e.status_code, e)
-```
-
-### Typical app flow
-
-```python
-client = MoorchehApiClient("http://localhost:8080")
-
-client.create_namespace({"namespace_name": "myapp", "type": "text"})
-resp = client.upload_namespace_documents("myapp", {"documents": [...]})
-
-import time
-job_id = resp["job_id"]
-while True:
-    job = client.upload_job_status("myapp", job_id)
-    if job.get("status") == "completed":
-        break
-    time.sleep(0.5)
-
-hits = client.search({
-    "query": "user question here",
-    "namespaces": ["myapp"],
-    "top_k": 10,
-})
-```
-
----
-
-## Data storage
-
-Vectors and documents are stored on your machine at:
-
-| Path | Contents |
-|------|----------|
-| `~/.moorcheh/data/moorcheh_data_store.json` | All items |
-| `~/.moorcheh/data/namespace_registry.json` | Namespace definitions |
-
-- Created automatically on first `moorcheh up`
-- **Not** inside your Python project folder
-- Survives `moorcheh down` — back up `~/.moorcheh` to save everything
-
----
-
-## Global item limit (100k)
-
-- At most **100,000 items** total (text + vectors, all namespaces)
-- `client.health()` or `moorcheh status` → `items`, `max_items`, `remaining`
-- New ids over the cap → **409** (whole batch rejected)
-- Re-uploading an existing id in the same namespace = update (no extra quota)
-- Delete items or a namespace to free quota
-
----
-
-## CLI reference
-
-For local ops and testing. Most app code should use the **Python API** above.
-
-| Command | Description |
-|---------|-------------|
-| `moorcheh up` | Start Moorcheh (`moorcheh/server:latest`) |
-| `moorcheh down` | Stop containers; keeps `~/.moorcheh` |
-| `moorcheh status` | Health + quota |
-| `moorcheh namespace-create --name X --type text` | Create text namespace |
-| `moorcheh namespace-create --name X --type vector --vector-dimension 768` | Create vector namespace |
-| `moorcheh namespace-list` | List namespaces |
-| `moorcheh namespace-delete --namespace-name X` | Delete namespace (async) |
-| `moorcheh upload-documents --namespace-name X --documents-file file.json` | Upload documents |
-| `moorcheh upload-vectors --namespace-name X --vectors-file file.json` | Upload vectors |
-| `moorcheh upload-job-status --namespace-name X --job-id JOB` | Poll upload job |
-| `moorcheh items-get --namespace-name X --ids-json '["id1"]'` | Get items |
-| `moorcheh items-delete --namespace-name X --ids-json '["id1"]'` | Delete items |
-| `moorcheh search --query "..." --namespaces docs --top-k 5` | Semantic search |
-
-API commands accept `--base-url http://localhost:8080` (default).
-
-### Embedding configuration
-
-Text namespaces and text search use an embedding provider configured in `~/.moorcheh/config.json`.
-
-On first `moorcheh up`, the CLI prompts for provider (`ollama`, `openai`, `cohere`), then shows a **numbered list of models** for that provider, then API key (for cloud providers only). API base URLs are fixed per provider and injected via container env — users are not asked for URLs.
-
-**Where settings live**
-
-| What | Where |
-|------|--------|
-| Provider, model, API key, base URL | `~/.moorcheh/config.json` on your machine (mode `600`) |
-| Provider API URLs | Code defaults written into `base_url` on save; edit config to override (no prompt during setup) |
-| Search/index data | `~/.moorcheh/data/` (bind-mounted into the container) |
-
-At `moorcheh up`, the CLI reads `config.json` and passes `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, and `EMBEDDING_API_KEY` into the Docker container environment. The API key is not written into the data directory.
-
-```bash
-moorcheh configure
-moorcheh up --embedding-provider openai --embedding-model text-embedding-3-small --embedding-api-key "$OPENAI_API_KEY"
-```
-
-| Provider | Example models (menu) | API key |
-|----------|----------------------|---------|
-| `ollama` | `nomic-embed-text`, `mxbai-embed-large`, … | Not required |
-| `openai` | `text-embedding-3-small`, `text-embedding-3-large`, … | Required |
-| `cohere` | `embed-english-v3.0`, `embed-multilingual-v3.0`, … | Required |
-
-### `moorcheh up` options
-
-| Flag | Default | Purpose |
-|------|---------|---------|
-| `--server-port` | `8080` | Host port for API |
-| `--server-image` | `moorcheh/server:latest` | Docker image |
-| `--embedding-provider` | from config | `ollama`, `openai`, or `cohere` |
-| `--embedding-model` | from config | Model name for the provider |
-| `--embedding-api-key` | from config | Cloud provider API key |
-| `--configure` | off | Run interactive setup before start |
-| `--no-configure` | off | Fail if `~/.moorcheh/config.json` is missing |
-| `--ollama-port` | `11434` | Host port to detect/use Ollama (ollama provider only) |
-| `--use-host-ollama` | off | Never start `moorcheh-ollama` container |
-| `--bundled-ollama` | off | Always start Ollama in Docker |
-
-When provider is `ollama`, if Ollama is already running on `127.0.0.1:11434`, `moorcheh up` reuses it and does not start a second Ollama container. OpenAI/Cohere only start the Moorcheh server container.
-
-### CLI example (documents file)
-
-`docs-upload.json`:
-
-```json
-{
-  "documents": [
-    {
-      "id": "doc-1",
-      "text": "Moorcheh on-prem retrieval test",
-      "team": "ai"
-    }
-  ]
-}
+answer = client.answer.generate(
+    namespace="docs",
+    query="What is in my documents?",
+)
 ```
 
 ```bash
-moorcheh upload-documents --namespace-name docs --documents-file docs-upload.json
-moorcheh upload-job-status --namespace-name docs --job-id <job_id from response>
+moorcheh down        # stops containers; data is kept
 ```
 
----
+## CLI
 
-## Optional: endpoint tester (Flask)
+Common commands: `moorcheh up`, `moorcheh down`, `moorcheh status`, `moorcheh namespace-create`, `moorcheh upload-documents`, `moorcheh search`, `moorcheh answer`.
 
-Internal browser UI to hit all endpoints (not for production apps):
+Run `moorcheh --help` or see [docs.moorcheh.ai/on-prem](https://docs.moorcheh.ai/on-prem) for the full CLI and API reference.
+
+## Test endpoints
+
+With the server running:
 
 ```bash
-pip install .[web]
-python app.py
+python test.py
 ```
 
-Open `http://localhost:5000`. Requires `moorcheh up` on port 8080.
+## Project layout
 
----
+| Path | Purpose |
+|------|---------|
+| `moorcheh/client/` | Python SDK |
+| `moorcheh/cli/` | CLI and Docker runtime |
+| `test.py` | Live endpoint integration test |
 
-## Requirements
+## Contributing
 
-- Python 3.10+
-- Docker Desktop (or Docker Engine)
-- Embedding provider: Ollama (host or `--bundled-ollama`), OpenAI, or Cohere (API key in `~/.moorcheh/config.json`)
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+[Apache License 2.0](LICENSE)

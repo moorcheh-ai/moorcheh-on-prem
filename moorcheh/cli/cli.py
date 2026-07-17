@@ -6,8 +6,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from moorcheh.api import MoorchehApiClient, MoorchehApiError
-from moorcheh.docker_runtime import (
+from moorcheh.client.api import MoorchehApiClient, MoorchehApiError
+from moorcheh.cli.docker_runtime import (
     DEFAULT_OLLAMA_IMAGE,
     DEFAULT_SERVER_IMAGE,
     ComposeCommandError,
@@ -17,7 +17,7 @@ from moorcheh.docker_runtime import (
     host_path_to_container_upload_path,
     up,
 )
-from moorcheh.user_config import configure_embedding_interactive, config_file_path, load_llm_config
+from moorcheh.cli.user_config import configure_embedding_interactive, config_file_path, load_llm_config
 
 
 def _print_json(payload: dict[str, Any]) -> None:

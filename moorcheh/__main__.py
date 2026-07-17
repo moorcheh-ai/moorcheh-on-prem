@@ -1,4 +1,4 @@
-from moorcheh.cli import main
+from moorcheh.cli.cli import main
 
 if __name__ == "__main__":
     main()

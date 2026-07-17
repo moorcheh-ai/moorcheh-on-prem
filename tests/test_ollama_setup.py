@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from moorcheh.ollama_setup import (
+from moorcheh.cli.ollama_setup import (
     _model_matches,
     ensure_ollama_model,
     ollama_has_model,
@@ -21,23 +21,23 @@ def test_model_matches_exact_and_tagged() -> None:
     assert not _model_matches("all-minilm", installed)
 
 
-@patch("moorcheh.ollama_setup.list_ollama_models", return_value=["nomic-embed-text:latest"])
+@patch("moorcheh.cli.ollama_setup.list_ollama_models", return_value=["nomic-embed-text:latest"])
 def test_ollama_has_model(_list: MagicMock) -> None:
     assert ollama_has_model("nomic-embed-text")
     assert not ollama_has_model("all-minilm")
 
 
-@patch("moorcheh.ollama_setup.wait_for_ollama", return_value=True)
-@patch("moorcheh.ollama_setup.ollama_has_model", return_value=True)
+@patch("moorcheh.cli.ollama_setup.wait_for_ollama", return_value=True)
+@patch("moorcheh.cli.ollama_setup.ollama_has_model", return_value=True)
 def test_ensure_ollama_model_already_installed(_has: MagicMock, _wait: MagicMock, capsys: pytest.CaptureFixture[str]) -> None:
     ensure_ollama_model("nomic-embed-text", interactive=False)
     out = capsys.readouterr().out
     assert "already available" in out
 
 
-@patch("moorcheh.ollama_setup.wait_for_ollama", return_value=True)
-@patch("moorcheh.ollama_setup.pull_ollama_model")
-@patch("moorcheh.ollama_setup.ollama_has_model", side_effect=[False, True])
+@patch("moorcheh.cli.ollama_setup.wait_for_ollama", return_value=True)
+@patch("moorcheh.cli.ollama_setup.pull_ollama_model")
+@patch("moorcheh.cli.ollama_setup.ollama_has_model", side_effect=[False, True])
 def test_ensure_ollama_model_pulls_when_missing(
     _has: MagicMock, pull: MagicMock, _wait: MagicMock, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -46,8 +46,8 @@ def test_ensure_ollama_model_pulls_when_missing(
     assert "Pulling embedding model" in capsys.readouterr().out
 
 
-@patch("moorcheh.ollama_setup.wait_for_ollama", return_value=True)
-@patch("moorcheh.ollama_setup.ollama_has_model", return_value=False)
+@patch("moorcheh.cli.ollama_setup.wait_for_ollama", return_value=True)
+@patch("moorcheh.cli.ollama_setup.ollama_has_model", return_value=False)
 def test_ensure_ollama_model_skip_pull(_has: MagicMock, _wait: MagicMock, capsys: pytest.CaptureFixture[str]) -> None:
     ensure_ollama_model("all-minilm", interactive=False, pull_if_missing=False)
     assert "not installed" in capsys.readouterr().out
