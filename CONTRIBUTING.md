@@ -1,8 +1,8 @@
 # Contributing to Moorcheh on-prem
 
-Thanks for your interest in contributing to **self-hosted open-source Moorcheh** ([docs.moorcheh.ai/on-prem](https://docs.moorcheh.ai/on-prem)).
+Thanks for your interest in contributing to **Moorcheh Community Edition** ([docs.moorcheh.ai/on-prem](https://docs.moorcheh.ai/on-prem)).
 
-By contributing, you agree that your contributions will be licensed under the [Apache License 2.0](LICENSE).
+By contributing, you agree that your contributions will be licensed under the [Moorcheh Community Edition License Agreement](LICENSE).
 
 ## Ways to contribute
 
@@ -78,6 +78,10 @@ Use clear, imperative subjects, e.g.:
 - This repo talks to **`moorcheh/server`** (Docker image). Server-side changes may live in a separate repo.
 - Do not commit secrets, API keys, or local config (`.env`, `~/.moorcheh/`).
 - Generated files (`moorcheh/_version.py`, `dist/`, `__pycache__/`) should not be committed.
+
+## Licensing note for contributors
+
+Moorcheh Community Edition is **source-available** and free for single-node, non-commercial deployments. It is not marketed or licensed as "open source" under OSI criteria. Commercial, multi-node, or SaaS use requires a [Moorcheh Enterprise](https://moorcheh.ai) license.
 
 ## Questions
 
