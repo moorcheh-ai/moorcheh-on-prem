@@ -6,15 +6,25 @@
 </p>
 
 <p align="center">
-  <strong>Self-hosted, open-source Moorcheh</strong> - The Information-Theoretic Search Engine for RAG & Agentic Memory
+  <strong>Moorcheh Community Edition: Free for single-node and non-commercial deployments.</strong>
+</p>
+
+<p align="center">
+  The Information-Theoretic Search Engine for RAG & Agentic Memory - self-hosted on your infrastructure.
+</p>
+
+<p align="center">
+  <img alt="License: Moorcheh Community (Free Single-Node)" src="https://img.shields.io/badge/License-Moorcheh%20Community%20(Free%20Single--Node)-blue">
 </p>
 
 <p align="center">
   <a href="https://pypi.org/project/moorcheh-client/">PyPI</a> ·
   <a href="https://docs.moorcheh.ai/on-prem">Documentation</a> ·
   <a href="CONTRIBUTING.md">Contributing</a> ·
-  <a href="LICENSE">Apache 2.0</a>
+  <a href="LICENSE">Community License</a>
 </p>
+
+> **Licensing:** Moorcheh Community Edition is **source-available** and **free** for non-commercial and single-node self-hosted deployments (at most one active server node). If you need multi-node high availability, enterprise features, or commercial SaaS usage, see [Moorcheh Enterprise](https://moorcheh.ai) or contact [sales@moorcheh.ai](mailto:sales@moorcheh.ai).
 
 ---
 
@@ -34,6 +44,8 @@ moorcheh status      # health + quota
 ```
 
 API: `http://localhost:8080` · Data: `~/.moorcheh/data`
+
+The [`moorcheh/server`](https://hub.docker.com/r/moorcheh/server) Docker image is governed by the same [Community Edition license](LICENSE). The license file should be included at `/LICENSE` inside the server image and linked from the Docker Hub repository description.
 
 ```python
 from moorcheh import MoorchehClient
@@ -68,21 +80,12 @@ Common commands: `moorcheh up`, `moorcheh down`, `moorcheh status`, `moorcheh na
 
 Run `moorcheh --help` or see [docs.moorcheh.ai/on-prem](https://docs.moorcheh.ai/on-prem) for the full CLI and API reference.
 
-## Test endpoints
-
-With the server running:
-
-```bash
-python test.py
-```
-
 ## Project layout
 
 | Path | Purpose |
 |------|---------|
 | `moorcheh/client/` | Python SDK |
 | `moorcheh/cli/` | CLI and Docker runtime |
-| `test.py` | Live endpoint integration test |
 
 ## Contributing
 
@@ -90,4 +93,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-[Apache License 2.0](LICENSE)
+[Moorcheh Community Edition License Agreement](LICENSE) - free for single-node, non-commercial use. Not an OSI-approved open-source license. Enterprise licensing: [sales@moorcheh.ai](mailto:sales@moorcheh.ai).
