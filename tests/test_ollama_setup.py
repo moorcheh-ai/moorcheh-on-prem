@@ -33,6 +33,14 @@ def test_ensure_ollama_model_already_installed(_has: MagicMock, _wait: MagicMock
     ensure_ollama_model("nomic-embed-text", interactive=False)
     out = capsys.readouterr().out
     assert "already available" in out
+    assert "Embedding model" in out
+
+
+@patch("moorcheh.cli.ollama_setup.wait_for_ollama", return_value=True)
+@patch("moorcheh.cli.ollama_setup.ollama_has_model", return_value=True)
+def test_ensure_ollama_model_llm_label(_has: MagicMock, _wait: MagicMock, capsys: pytest.CaptureFixture[str]) -> None:
+    ensure_ollama_model("qwen2.5:1.5b", interactive=False, model_kind="llm")
+    assert "LLM model" in capsys.readouterr().out
 
 
 @patch("moorcheh.cli.ollama_setup.wait_for_ollama", return_value=True)

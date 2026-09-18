@@ -15,7 +15,7 @@ By contributing, you agree that your contributions will be licensed under the [M
 **Requirements:** Python 3.10+, Git, and optionally [Docker](https://www.docker.com/) for live integration testing.
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/moorcheh-ai/moorcheh-on-prem.git
 cd moorcheh-on-prem
 pip install -e ".[dev]"
 ```
