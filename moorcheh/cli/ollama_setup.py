@@ -153,6 +153,12 @@ def _prompt_yes_no(prompt: str, *, default_yes: bool = True) -> bool:
     return raw in ("y", "yes")
 
 
+def _ollama_model_role_label(model_kind: str) -> tuple[str, str]:
+    if model_kind == "llm":
+        return "LLM", "/answer will fail until you run: ollama pull {model}"
+    return "Embedding", "Text upload/search will fail until you run: ollama pull {model}"
+
+
 def ensure_ollama_model(
     model: str,
     *,
@@ -160,11 +166,13 @@ def ensure_ollama_model(
     port: int = DEFAULT_OLLAMA_PORT,
     interactive: bool = True,
     pull_if_missing: bool = True,
+    model_kind: str = "embedding",
 ) -> None:
     """
-    Verify Ollama is reachable and the embedding model is available; optionally pull if missing.
-    Used during moorcheh configure. Raises RuntimeError when Ollama is required but not ready.
+    Verify Ollama is reachable and the model is available; optionally pull if missing.
+    Used during moorcheh configure and moorcheh up. Raises RuntimeError when Ollama is required but not ready.
     """
+    role_label, skip_hint = _ollama_model_role_label(model_kind)
     if not wait_for_ollama(host, port, timeout_sec=30):
         raise RuntimeError(
             f"Ollama is not running at http://{host}:{port}. "
@@ -172,37 +180,41 @@ def ensure_ollama_model(
         )
 
     if ollama_has_model(model, host, port):
-        print(f"Embedding model '{model}' is already available at http://{host}:{port}.")
+        print(f"{role_label} model '{model}' is already available at http://{host}:{port}.")
         return
 
     if not pull_if_missing:
         print(
-            f"Embedding model '{model}' is not installed at http://{host}:{port}.\n"
+            f"{role_label} model '{model}' is not installed at http://{host}:{port}.\n"
             f"  Run: ollama pull {model}"
         )
         return
 
-    print(f"Embedding model '{model}' is not installed at http://{host}:{port}.")
+    print(f"{role_label} model '{model}' is not installed at http://{host}:{port}.")
     if not interactive:
-        print(f"Pulling embedding model '{model}'...")
+        print(f"Pulling {role_label.lower()} model '{model}'...")
     elif not _prompt_yes_no(f"Pull '{model}' now?", default_yes=True):
-        print(
-            f"Skipped pull. Text upload/search will fail until you run: ollama pull {model}"
-        )
+        print(f"Skipped pull. {skip_hint.format(model=model)}")
         return
 
     pull_ollama_model(model, host, port)
     if not ollama_has_model(model, host, port):
-        raise RuntimeError(f"Embedding model '{model}' is still not available after pull.")
+        raise RuntimeError(f"{role_label} model '{model}' is still not available after pull.")
 
 
-def prepare_ollama_at_configure(model: str, *, host: str = DEFAULT_OLLAMA_HOST, port: int = DEFAULT_OLLAMA_PORT) -> None:
+def prepare_ollama_at_configure(
+    model: str,
+    *,
+    host: str = DEFAULT_OLLAMA_HOST,
+    port: int = DEFAULT_OLLAMA_PORT,
+    model_kind: str = "embedding",
+) -> None:
     """
     During moorcheh configure: check host Ollama if already running; defer otherwise.
     """
     if ollama_is_reachable(host, port):
         print(f"Ollama detected at http://{host}:{port}.")
-        ensure_ollama_model(model, host=host, port=port, interactive=True)
+        ensure_ollama_model(model, host=host, port=port, interactive=True, model_kind=model_kind)
         return
 
     print(

@@ -39,7 +39,8 @@ PROVIDER_MODELS: dict[str, list[tuple[str, str]]] = {
 
 LLM_PROVIDER_MODELS: dict[str, list[tuple[str, str]]] = {
     "ollama": [
-        ("qwen2.5", "Qwen 2.5 (recommended)"),
+        ("qwen2.5", "Qwen 2.5 - 7B parameters (recommended)"),
+        ("qwen2.5:1.5b", "Qwen 2.5 Instruct - 1.5B parameters"),
         ("llama3.2", "Llama 3.2"),
         ("mistral", "Mistral"),
     ],
@@ -470,7 +471,7 @@ def _configure_llm_interactive(embedding: EmbeddingConfig) -> LlmConfig:
     if provider == "ollama":
         from moorcheh.cli.ollama_setup import prepare_ollama_at_configure
 
-        prepare_ollama_at_configure(model)
+        prepare_ollama_at_configure(model, model_kind="llm")
 
     return LlmConfig(
         provider=provider,
@@ -495,7 +496,7 @@ def configure_embedding_interactive(*, force: bool = False) -> EmbeddingConfig:
             if resolved.provider == "ollama":
                 from moorcheh.cli.ollama_setup import prepare_ollama_at_configure
 
-                prepare_ollama_at_configure(resolved.model)
+                prepare_ollama_at_configure(resolved.model, model_kind="embedding")
             return resolved
         print(
             "\nYou chose to change embedding settings. "
@@ -523,7 +524,7 @@ def configure_embedding_interactive(*, force: bool = False) -> EmbeddingConfig:
     if provider == "ollama":
         from moorcheh.cli.ollama_setup import prepare_ollama_at_configure
 
-        prepare_ollama_at_configure(model)
+        prepare_ollama_at_configure(model, model_kind="embedding")
 
     config = EmbeddingConfig(
         provider=provider,

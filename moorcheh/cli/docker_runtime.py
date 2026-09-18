@@ -217,6 +217,7 @@ def up(
                     port=ollama_port,
                     interactive=False,
                     pull_if_missing=not skip_ollama_model_pull,
+                    model_kind="embedding",
                 )
             if llm.provider == "ollama" and llm.model != embedding.model:
                 ensure_ollama_model(
@@ -225,6 +226,7 @@ def up(
                     port=ollama_port,
                     interactive=False,
                     pull_if_missing=not skip_ollama_model_pull,
+                    model_kind="llm",
                 )
         else:
             if embedding.provider == "ollama":
@@ -234,6 +236,7 @@ def up(
                     port=ollama_port,
                     interactive=False,
                     pull_if_missing=not skip_ollama_model_pull,
+                    model_kind="embedding",
                 )
             if llm.provider == "ollama":
                 ensure_ollama_model(
@@ -242,6 +245,7 @@ def up(
                     port=ollama_port,
                     interactive=False,
                     pull_if_missing=not skip_ollama_model_pull,
+                    model_kind="llm",
                 )
 
     ollama_url = (
